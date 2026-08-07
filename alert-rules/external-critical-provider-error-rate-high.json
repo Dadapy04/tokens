@@ -1,0 +1,93 @@
+{
+  "uid": "tokens-external-provider-error-rate-high",
+  "title": "Critical external provider error rate > 30% for 10m",
+  "ruleGroup": "tokens-external-providers",
+  "folderUID": "tokens-xyz",
+  "noDataState": "OK",
+  "execErrState": "OK",
+  "for": "10m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "model": {
+        "expr": "(sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"birdeye|coingecko|jupiter\" | ok=\"false\" [5m])) / sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"birdeye|coingecko|jupiter\" [5m]))) and (sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"birdeye|coingecko|jupiter\" [5m])) > 0.05)",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "gt",
+              "params": [
+                0.3
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ],
+  "condition": "C",
+  "labels": {
+    "scope": "external",
+    "severity": "critical",
+    "pagerduty": "true",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "Critical external provider {{ $labels.provider }} error rate above 30%",
+    "description": "Provider {{ $labels.provider }} has been returning errors for more than 30% of calls sustained over the last 10 minutes (min 0.05 calls/sec floor). Birdeye, CoinGecko, and Jupiter power live market data \u2014 consider activating fallback or surfacing degraded mode to users.",
+    "runbook_url": "https://example.com/runbooks/external-critical-provider-error-rate-high"
+  }
+}

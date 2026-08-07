@@ -1,0 +1,93 @@
+{
+  "uid": "tokens-api-slow-request-spike",
+  "title": "tokens-api: slow-request rate spike",
+  "ruleGroup": "tokens-api-availability",
+  "folderUID": "tokens-xyz",
+  "noDataState": "OK",
+  "execErrState": "OK",
+  "for": "10m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 900,
+        "to": 0
+      },
+      "model": {
+        "expr": "sum(rate({service=\"tokens-api\"} | json | event=\"http_request\" | slow_request=\"true\" [5m]))",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "gt",
+              "params": [
+                0.5
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ],
+  "condition": "C",
+  "labels": {
+    "service": "tokens-api",
+    "severity": "warning",
+    "pagerduty": "false",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "Slow-request rate > 0.5/sec",
+    "description": "tokens-api emitted slow_request=true at a rate above 0.5/sec sustained for 10 minutes. Investigate whether a specific endpoint is degrading or a Convex/ClickHouse upstream is slow.",
+    "runbook_url": "https://example.com/runbooks/api-slow-request-spike"
+  }
+}

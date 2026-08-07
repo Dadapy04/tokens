@@ -1,0 +1,136 @@
+@import 'tailwindcss';
+
+/*
+ * Register the literal "Inter Variable" family so every reference in the
+ * cascade (DS --font-sans stack, Figma Code Connect snippets, Tailwind @theme
+ * inline utilities that bake in the literal name) resolves to the same
+ * variable font. Without this shim the stack falls through to a user's
+ * installed system "Inter" (weights 400/700 only), producing faux-bold or
+ * thin rendering instead of the axis weight the design system specifies.
+ *
+ * font-display: optional pairs with the <link rel="preload"> in layout.tsx —
+ * the browser gets ~100ms to load the font; if it arrives, use it; else fall
+ * back for this pageview and cache for next. Avoids the long FOUT that swap
+ * forces on self-hosted fonts. font-size-adjust keeps system fallback metrics
+ * close to Inter's x-height so layout doesn't shift if the swap does happen.
+ */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: optional;
+  src: url('/fonts/InterVariable.woff2') format('woff2-variations');
+}
+
+@import '@solana/design-system/styles';
+@import '@solana/design-system/base.css';
+@plugin '@toolwind/corner-shape';
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+
+/* Disable faux bold/italic synthesis so a missing variable-axis match never renders heavier than spec. */
+html {
+  font-synthesis-weight: none;
+  font-synthesis-style: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-size-adjust: 0.52;
+}
+
+:root {
+  --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
+  --font-berkeley-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  /* ABC Diatype isn't bundled in this app; fall the DS .font-diatype-* utilities through to Inter so the page doesn't render system-ui. */
+  --font-abc-diatype: var(--font-sans);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-sans);
+}
+
+/*
+ * Tailwind v4 @theme aliases like `--color-text-extra-high: var(--text-extra-high)`
+ * substitute their inner var() once at :root, so .dark overrides on a descendant
+ * element never reach the alias and Tailwind's text-text-* / border-border-*
+ * utilities render light-mode colors. Re-declare the aliases at .dark scope so
+ * they re-resolve against the dark-mode --text-* / --border-* values.
+ */
+.dark {
+  --color-text-extra-high: var(--text-extra-high);
+  --color-text-high: var(--text-high);
+  --color-text-medium: var(--text-medium);
+  --color-text-low: var(--text-low);
+  --color-text-extra-low: var(--text-extra-low);
+  --color-border-strongest: var(--border-strongest);
+  --color-border-strong: var(--border-strong);
+  --color-border-medium: var(--border-medium);
+  --color-border-light: var(--border-light);
+  --color-border-extra-light: var(--border-extra-light);
+}
+
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes market-feed-ticker {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-50% - 0.25rem));
+  }
+}
+
+.market-feed-ticker {
+  animation: market-feed-ticker 22s linear infinite;
+}
+
+.market-feed-ticker-viewport:hover .market-feed-ticker,
+.market-feed-ticker-viewport:focus-within .market-feed-ticker {
+  animation-play-state: paused;
+}
+
+@supports (animation-timeline: scroll(self)) {
+  .market-feed-news-scroll {
+    animation: market-feed-mask-up linear both;
+    animation-timeline: scroll(self);
+    animation-range: 0 1rem;
+    mask-image: linear-gradient(to bottom, #000, transparent), linear-gradient(#000 0 0);
+    mask-position: top, top;
+    mask-repeat: no-repeat;
+    mask-size: 100% 0, 100% 100%;
+    mask-composite: exclude;
+    -webkit-mask-image: linear-gradient(to bottom, #000, transparent), linear-gradient(#000 0 0);
+    -webkit-mask-position: top, top;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 0, 100% 100%;
+    -webkit-mask-composite: xor;
+  }
+}
+
+@keyframes market-feed-mask-up {
+  to {
+    mask-size: 100% 36px, 100% 100%;
+    -webkit-mask-size: 100% 36px, 100% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-feed-ticker {
+    animation: none;
+  }
+
+  .market-feed-news-scroll {
+    animation: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+}

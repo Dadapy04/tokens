@@ -1,0 +1,177 @@
+@import 'tailwindcss';
+@import '@solana/design-system/styles';
+@import '@solana/design-system/base.css';
+
+/* Tailwind v4 source scanning for shared UI package */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+
+:root {
+    --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+    --font-inter: var(--font-sans);
+    --font-berkeley-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    --font-abc-diatype: var(--font-sans);
+}
+
+.font-berkeley-mono {
+    font-family: var(--font-berkeley-mono);
+    font-weight: 400;
+}
+
+.font-inter {
+    font-family: var(--font-inter);
+}
+
+.font-inter-medium {
+    font-family: var(--font-inter);
+    font-weight: 520;
+}
+
+.font-inter-semibold {
+    font-family: var(--font-inter);
+    font-weight: 580;
+}
+
+/* Tailwind v4 animate utilities (used by Radix components) */
+@keyframes enter {
+    from {
+        opacity: var(--tw-enter-opacity, 1);
+        transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+            scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+            rotate(var(--tw-enter-rotate, 0));
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    }
+}
+
+@keyframes exit {
+    from {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    }
+    to {
+        opacity: var(--tw-exit-opacity, 1);
+        transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+            scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+            rotate(var(--tw-exit-rotate, 0));
+    }
+}
+
+@utility animate-in {
+    animation-name: enter;
+    animation-duration: 200ms;
+    animation-timing-function: ease-out;
+    animation-fill-mode: forwards;
+    --tw-enter-opacity: initial;
+    --tw-enter-scale: initial;
+    --tw-enter-rotate: initial;
+    --tw-enter-translate-x: initial;
+    --tw-enter-translate-y: initial;
+}
+
+@utility animate-out {
+    animation-name: exit;
+    animation-duration: 160ms;
+    animation-timing-function: ease-out;
+    animation-fill-mode: forwards;
+    --tw-exit-opacity: initial;
+    --tw-exit-scale: initial;
+    --tw-exit-rotate: initial;
+    --tw-exit-translate-x: initial;
+    --tw-exit-translate-y: initial;
+}
+
+@utility fade-in-0 {
+    --tw-enter-opacity: 0;
+}
+
+@utility fade-out-0 {
+    --tw-exit-opacity: 0;
+}
+
+@utility zoom-in-95 {
+    --tw-enter-scale: 0.95;
+}
+
+@utility zoom-out-95 {
+    --tw-exit-scale: 0.95;
+}
+
+@utility slide-in-from-top {
+    --tw-enter-translate-y: -100%;
+}
+
+@utility slide-in-from-bottom {
+    --tw-enter-translate-y: 100%;
+}
+
+@utility slide-in-from-left {
+    --tw-enter-translate-x: -100%;
+}
+
+@utility slide-in-from-right {
+    --tw-enter-translate-x: 100%;
+}
+
+@utility slide-in-from-top-2 {
+    --tw-enter-translate-y: -0.5rem;
+}
+
+@utility slide-in-from-bottom-2 {
+    --tw-enter-translate-y: 0.5rem;
+}
+
+@utility slide-in-from-left-2 {
+    --tw-enter-translate-x: -0.5rem;
+}
+
+@utility slide-in-from-right-2 {
+    --tw-enter-translate-x: 0.5rem;
+}
+
+@utility slide-out-to-top {
+    --tw-exit-translate-y: -100%;
+}
+
+@utility slide-out-to-bottom {
+    --tw-exit-translate-y: 100%;
+}
+
+@utility slide-out-to-left {
+    --tw-exit-translate-x: -100%;
+}
+
+@utility slide-out-to-right {
+    --tw-exit-translate-x: 100%;
+}
+
+@utility slide-out-to-top-2 {
+    --tw-exit-translate-y: -0.5rem;
+}
+
+@utility slide-out-to-bottom-2 {
+    --tw-exit-translate-y: 0.5rem;
+}
+
+@utility slide-out-to-left-2 {
+    --tw-exit-translate-x: -0.5rem;
+}
+
+@utility slide-out-to-right-2 {
+    --tw-exit-translate-x: 0.5rem;
+}
+
+/* Solana DS Select uses Base UI `sideOffset={4}`. Pull the popup flush to the trigger. */
+[role='presentation'].z-50[data-open][data-side='bottom']:has([role='listbox']) {
+    translate: 0 -4px;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}

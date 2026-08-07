@@ -1,0 +1,83 @@
+---
+title: Authentication & Limits
+description: API keys, scopes, and request identity.
+---
+
+## Platform API: `x-api-key`
+
+Most v1 endpoints are Platform API endpoints and require an API key header:
+
+- `x-api-key: <your_api_key>`
+
+If the key is missing or invalid, you’ll receive a `401` error.
+
+## Dashboard key reveal and Playground behavior
+
+Newly created or regenerated API keys can be revealed and copied from the API Manager because the raw key is stored encrypted for dashboard use. The public API still authenticates with `x-api-key`; encrypted storage only affects the dashboard reveal/copy experience.
+
+Older keys created before encrypted key storage may be legacy hash-only keys. These keys still authenticate API requests and can still power the API Manager Playground while active, but their raw value cannot be recovered or copied. Regenerate a legacy key once to create a new revealable encrypted key; regeneration deactivates the previous key.
+
+The API Manager Playground can run with the active project key even when the raw key is hidden. Treat Playground execution as equivalent to using that active key for usage, rate limits, and quotas.
+
+## Session-authenticated endpoint
+
+`GET /v1/whoami` is a first-party endpoint for authenticated Tokens apps. It uses a Clerk user session and does not accept `x-api-key`.
+
+## Scopes
+
+Most v1 endpoints currently require:
+
+- `assets:read`
+
+Some endpoints may accept a *fine-grained* scope in addition to `assets:read`. For example, `GET /v1/assets/risk-summary` accepts either `assets:read` or `assets:risk:read`.
+
+If your key doesn’t have the required scope, you’ll receive a `403` error.
+
+## Request IDs
+
+Platform endpoints include:
+
+- `x-request-id` header on responses
+
+If you contact support, include the `x-request-id`.
+
+## Rate limits and errors
+
+For limit behavior, retry patterns, and common status codes, see:
+
+- [Rate Limits & Errors](/v1/rate-limits-and-errors)
+
+## Example (TypeScript + fetch)
+
+```ts
+interface ApiErrorEnvelope {
+  error: {
+    _tag: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const error = (value as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return false;
+  const e = error as { _tag?: unknown; message?: unknown };
+  return typeof e._tag === "string" && typeof e.message === "string";
+}
+
+export async function getJson<T>(path: string, apiKey: string): Promise<T> {
+  const res = await fetch(path, {
+    headers: { "x-api-key": apiKey },
+  });
+
+  const json: unknown = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    if (isApiErrorEnvelope(json)) throw new Error(`${json.error._tag}: ${json.error.message}`);
+    throw new Error(`HTTP ${res.status}`);
+  }
+
+  return json as T;
+}
+```

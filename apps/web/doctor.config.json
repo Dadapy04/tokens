@@ -1,0 +1,120 @@
+{
+    "$schema": "https://react.doctor/schema/config.json",
+    // Every entry below is a verified false positive from the 2026-07-25 triage
+    // passes (195 → 26 → 0). Each was checked against the rule's canonical
+    // validation prompt before being ignored here. Overrides are scoped to
+    // file + rule — no rule is disabled globally.
+    "ignore": {
+        "overrides": [
+            {
+                // dangerouslyAllowSVG is required: token logos serve SVG from
+                // extension-less arweave/IPFS URLs. Mitigated per the rule's own
+                // recipe: attachment disposition + CSP script-src/object-src 'none' + sandbox.
+                "files": ["next.config.ts"],
+                "rules": ["react-doctor/active-static-asset"]
+            },
+            {
+                // Transparent proxy: forwards upstream status + body byte-for-byte
+                // by contract; status is consulted for cache policy before body read.
+                "files": ["src/app/api/_platform-proxy.ts"],
+                "rules": ["react-doctor/no-fetch-response-used-without-status-check"]
+            },
+            {
+                // Timer ids are collected in cycleTimeouts[] and cleared by the
+                // returned teardown; the detector can't see through the schedule() helper.
+                "files": ["src/app/assets-api/code-sandbox/index.tsx"],
+                "rules": ["react-doctor/effect-needs-cleanup"]
+            },
+            {
+                // effect-needs-cleanup: Matter.Events.on registered in the user-triggered
+                // beginRun callback, removed via collisionHandlerRef in cleanupWorld.
+                // no-array-index-as-key: positional hearts HUD placeholders.
+                // auth-token-in-web-storage: localStorage holds a game high score, not a token.
+                "files": ["src/app/assets-api/token-asteroids-modal.tsx"],
+                "rules": [
+                    "react-doctor/effect-needs-cleanup",
+                    "react-doctor/no-array-index-as-key",
+                    "react-doctor/auth-token-in-web-storage"
+                ]
+            },
+            {
+                // motion.div height→auto "show more" reveal; auto height can't be
+                // animated with transform.
+                "files": ["src/app/assets-api/code-sandbox/right-panel.tsx"],
+                "rules": ["react-doctor/no-layout-property-animation"]
+            },
+            {
+                // Positional lists that never reorder: hero title words / JSON tree rows.
+                "files": [
+                    "src/app/assets-api/hero-section.tsx",
+                    "src/app/assets-api/json-tree.tsx",
+                    "src/components/animated-price.tsx"
+                ],
+                "rules": ["react-doctor/no-array-index-as-key"]
+            },
+            {
+                // rendering-hydration-mismatch-time: Date.now() runs in a Server
+                // Component and is serialized once — no client re-render to mismatch.
+                // no-array-index-as-key: skeleton placeholder rows.
+                "files": ["src/app/page.tsx"],
+                "rules": [
+                    "react-doctor/rendering-hydration-mismatch-time",
+                    "react-doctor/no-array-index-as-key"
+                ]
+            },
+            {
+                // Forma preview file loaded by glob, not by import graph.
+                "files": ["src/app/token/[address]/components/swap-providers-dropdown.preview.tsx"],
+                "rules": ["deslop/unused-file"]
+            },
+            {
+                // no-derived-state / no-derived-state-effect: snapshotPoints/
+                // snapshotWindow are deliberately frozen, history-dependent copies
+                // (snapshot at dialog open, refresh only on new-timeframe data) —
+                // inline/useMemo derivation would track live prices and break the freeze.
+                // no-create-object-url-without-revoke: revocation handled by the
+                // ref-based blob cache lifecycle.
+                "files": ["src/components/chart-share-button.tsx"],
+                "rules": [
+                    "react-doctor/no-derived-state",
+                    "react-doctor/no-derived-state-effect",
+                    "react-doctor/no-create-object-url-without-revoke"
+                ]
+            },
+            {
+                // auth-token-in-web-storage: localStorage holds banner-dismissal
+                // timestamp + feed UI settings, no credentials.
+                // no-transition-all: tailwind animate-in classes, no transition:all.
+                "files": ["src/components/floating-market-feed.tsx"],
+                "rules": [
+                    "react-doctor/auth-token-in-web-storage",
+                    "react-doctor/no-transition-all"
+                ]
+            },
+            {
+                // Wrapper div only cancels bubbled Link navigation after a chart
+                // scrub; the interactive elements inside are real links.
+                "files": ["src/components/home/highlights-section.tsx"],
+                "rules": [
+                    "react-doctor/click-events-have-key-events",
+                    "react-doctor/no-static-element-interactions"
+                ]
+            },
+            {
+                // Plain <img> required: data:/blob: srcs for html-to-image capture.
+                "files": ["src/components/share-card-with-chart.tsx"],
+                "rules": ["react-doctor/nextjs-no-img-element"]
+            },
+            {
+                // Subscription bookkeeping on symbol change, not derived state.
+                "files": ["src/hooks/use-realtime-quote.ts"],
+                "rules": ["react-doctor/no-adjust-state-on-prop-change"]
+            },
+            {
+                // Post-await isClosed check is a deliberate cancellation barrier.
+                "files": ["src/lib/realtime-prices/pyth-hermes-stream.ts"],
+                "rules": ["react-doctor/async-defer-await"]
+            }
+        ]
+    }
+}

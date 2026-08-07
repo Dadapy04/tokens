@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@tokens/ui/globals.css";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+:root {
+  --fd-nav-height: 0px !important;
+  --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
+  --font-inter: var(--font-sans);
+  --font-abc-diatype: var(--font-sans);
+  --font-berkeley-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+@media (min-width: 1280px) {
+  #nd-docs-layout {
+    --fd-layout-width: 100vw;
+  }
+}
+
+/* Tailwind v4 source scanning for shared UI package */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";

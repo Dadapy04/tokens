@@ -1,0 +1,93 @@
+{
+  "uid": "tokens-external-provider-feed-stale",
+  "title": "External provider feed went silent (no successful calls in 15m)",
+  "ruleGroup": "tokens-external-providers",
+  "folderUID": "tokens-xyz",
+  "noDataState": "Alerting",
+  "execErrState": "OK",
+  "for": "15m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 900,
+        "to": 0
+      },
+      "model": {
+        "expr": "sum(rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | ok=\"true\" [5m]))",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "lt",
+              "params": [
+                0.001
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ],
+  "condition": "C",
+  "labels": {
+    "scope": "external",
+    "severity": "critical",
+    "pagerduty": "true",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "External provider calls have stopped \u2014 possible outage",
+    "description": "No successful external_call events from any provider in the last 15 minutes. Either tokens.xyz isn't generating any traffic that calls upstreams, or every upstream is failing. Check the External providers dashboard and the API overview dashboard for traffic levels.",
+    "runbook_url": "https://example.com/runbooks/external-provider-feed-stale"
+  }
+}

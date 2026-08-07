@@ -1,0 +1,78 @@
+{
+    "name": "tokens",
+    "private": true,
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/solana-foundation/tokens.git"
+    },
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "lint": "turbo run lint",
+        "typecheck": "turbo run typecheck",
+        "test": "turbo run test",
+        "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",
+        "verify:api-health-routes": "bun scripts/verify-api-health-routes.ts",
+        "audit:deps": "bun audit",
+        "verify:assets-api-v1": "bun scripts/verify-assets-api-v1-contract.ts",
+        "verify:asset-registry-hubs": "bun scripts/audit-asset-registry-hubs.ts",
+        "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+        "postinstall": "node scripts/patch-liveline.mjs",
+        "clean": "turbo run clean && rm -rf node_modules",
+        "seed:tokens": "node scripts/seed-tokens.mjs",
+        "seed:ohlcv": "node scripts/seed-ohlcv.mjs"
+    },
+    "dependencies": {
+        "@clickhouse/client": "^1.23.1",
+        "hono": "^4.13.0"
+    },
+    "devDependencies": {
+        "@solana/prettier-config-solana": "^0.0.5",
+        "@tokens/asset-registry": "workspace:*",
+        "@tokens/token-risk-helpers": "workspace:*",
+        "dialkit": "^1.4.3",
+        "effect": "^3.21.0",
+        "motion": "^12.43.0",
+        "postgres": "^3.4.9",
+        "prettier": "^3.9.6",
+        "turbo": "^2.10.8",
+        "typescript": "^5.9.3"
+    },
+    "overrides": {
+        "next": "16.3.0",
+        "effect": "3.21.0",
+        "vite": "6.4.3",
+        "@babel/core": "7.29.7",
+        "@clerk/backend": "2.33.5",
+        "@clerk/clerk-react": "5.61.8",
+        "@clerk/shared": "3.47.7",
+        "@clerk/types": "4.101.25",
+        "dompurify": "3.4.12",
+        "js-yaml": "4.3.0",
+        "js-cookie": "3.0.8",
+        "postcss": "8.5.23",
+        "protobufjs": "7.6.2",
+        "uuid": "11.1.1",
+        "ws": "8.21.0",
+        "lodash": "4.18.1",
+        "brace-expansion": "5.0.9",
+        "flatted": "3.4.2",
+        "path-to-regexp": "8.4.2",
+        "picomatch": "2.3.2",
+        "esbuild": "0.28.1",
+        "fast-xml-parser": "5.10.1",
+        "sharp": "0.35.3"
+    },
+    "packageManager": "bun@1.3.6",
+    "engines": {
+        "node": ">=20"
+    },
+    "patchedDependencies": {
+        "brace-expansion@5.0.9": "patches/brace-expansion@5.0.9.patch"
+    }
+}

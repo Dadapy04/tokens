@@ -1,0 +1,697 @@
+{
+  "uid": "tokens-api-overview",
+  "title": "API overview",
+  "description": "Request rate, latency, 5xx ratio, and recent errors for the tokens.xyz API surface.",
+  "tags": [
+    "tokens",
+    "api"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "service",
+        "type": "custom",
+        "query": "tokens-api,tokens-app,tokens-docs,tokens-web",
+        "current": {
+          "selected": false,
+          "text": "tokens-api",
+          "value": "tokens-api"
+        },
+        "options": [
+          {
+            "text": "tokens-api",
+            "value": "tokens-api",
+            "selected": true
+          },
+          {
+            "text": "tokens-app",
+            "value": "tokens-app",
+            "selected": false
+          },
+          {
+            "text": "tokens-docs",
+            "value": "tokens-docs",
+            "selected": false
+          },
+          {
+            "text": "tokens-web",
+            "value": "tokens-web",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "level",
+        "label": "Log level",
+        "type": "custom",
+        "query": "ERROR : error|exception|fatal|failure|5\\d\\d, WARN : warn|error|exception|fatal|failure|5\\d\\d, ALL : .",
+        "current": {
+          "selected": false,
+          "text": "ERROR",
+          "value": "error|exception|fatal|failure|5\\d\\d"
+        },
+        "options": [
+          {
+            "text": "ERROR",
+            "value": "error|exception|fatal|failure|5\\d\\d",
+            "selected": true
+          },
+          {
+            "text": "WARN",
+            "value": "warn|error|exception|fatal|failure|5\\d\\d",
+            "selected": false
+          },
+          {
+            "text": "ALL",
+            "value": ".",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Requests (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"$service\"} | json | event=\"http_request\" [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "5xx (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"$service\"} | json | event=\"http_request\" | status_class=\"5xx\" [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "orange"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "p95 latency (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(quantile_over_time(0.95, {service=\"$service\"} | json | event=\"http_request\" | unwrap duration_ms [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1000,
+                "color": "orange"
+              },
+              {
+                "value": 3000,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Slow requests (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"$service\"} | json | event=\"http_request\" | slow_request=\"true\" [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 5,
+                "color": "orange"
+              },
+              {
+                "value": 50,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Top 10 endpoints \u2014 request rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by(endpoint) (rate({service=\"$service\"} | json | event=\"http_request\" [1m])))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Status class breakdown",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(status_class) (rate({service=\"$service\"} | json | event=\"http_request\" [1m]))",
+          "legendFormat": "{{status_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latency percentiles (p50 / p95 / p99)",
+      "description": "Approximate. Each line is the avg of per-stream quantile_over_time, not a true global percentile (Loki doesn't expose a top-level quantile aggregator on instant vectors). Accurate when traffic is concentrated on few label combinations.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(quantile_over_time(0.50, {service=\"$service\"} | json | event=\"http_request\" | unwrap duration_ms [1m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "avg(quantile_over_time(0.95, {service=\"$service\"} | json | event=\"http_request\" | unwrap duration_ms [1m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "avg(quantile_over_time(0.99, {service=\"$service\"} | json | event=\"http_request\" | unwrap duration_ms [1m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "5xx ratio",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({service=\"$service\"} | json | event=\"http_request\" | status_class=\"5xx\" [5m])) / sum(rate({service=\"$service\"} | json | event=\"http_request\" [5m]))",
+          "legendFormat": "5xx ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 0.01,
+                "color": "orange"
+              },
+              {
+                "value": 0.05,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Top 5 slowest endpoints (p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(5, avg by(endpoint) (quantile_over_time(0.95, {service=\"$service\"} | json | event=\"http_request\" | unwrap duration_ms [5m])))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Slow-request rate (>1s)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({service=\"$service\"} | json | event=\"http_request\" | slow_request=\"true\" [5m]))",
+          "legendFormat": "slow/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Top 10 projects by request rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by(project_id) (rate({service=\"$service\"} | json | event=\"http_request\" | project_id != \"\" [5m])))",
+          "legendFormat": "{{project_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Top 10 API keys by request rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by(key_prefix) (rate({service=\"$service\"} | json | event=\"http_request\" | key_prefix != \"\" [5m])))",
+          "legendFormat": "{{key_prefix}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Quota usage % per project (top 10)",
+      "description": "quota_used / quota_limit, sampled from the latest http_request event per project. Decision-input for tightening rate limits.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, max by(project_id) (last_over_time({service=\"$service\"} | json | event=\"http_request\" | project_id != \"\" | unwrap quota_used [5m])) / max by(project_id) (last_over_time({service=\"$service\"} | json | event=\"http_request\" | project_id != \"\" | unwrap quota_limit [5m])))",
+          "legendFormat": "{{project_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Rate-limit denials (429s) per project",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(project_id) (rate({service=\"$service\"} | json | event=\"http_request\" | status=\"429\" | project_id != \"\" [5m]))",
+          "legendFormat": "{{project_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "logs",
+      "title": "Recent 5xx errors",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=\"$service\"} | json | event=\"http_request\" | status_class=\"5xx\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 16,
+      "type": "logs",
+      "title": "Recent logs ($level)",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=\"$service\"} |~ `(?i)($level)`"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "API error rate (4xx + 5xx)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(status_class) (rate({service=\"$service\"} | json | event=\"http_request\" | status_class=~\"4xx|5xx\" [1m]))",
+          "legendFormat": "{{status_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Project quota leaderboard (top 10)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, max by(project_id) (last_over_time({service=\"$service\"} | json | event=\"http_request\" | project_id != \"\" | unwrap quota_used [10m])))",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "tags": [
+          "deploy"
+        ],
+        "type": "tags"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily tokens.xyz API usage digest to Slack
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Asia/Kolkata
+AccuracySec=30s
+Persistent=true
+Unit=tokens-usage-digest.service
+
+[Install]
+WantedBy=timers.target

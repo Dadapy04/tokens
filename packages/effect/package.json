@@ -1,0 +1,30 @@
+{
+  "name": "@tokens/effect",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
+  },
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./api-errors": "./src/api-errors.ts",
+    "./schema": "./src/schema.ts",
+    "./fetch": "./src/fetch.ts",
+    "./limits": "./src/limits.ts",
+    "./tap-error-and-default": "./src/tap-error-and-default.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@tokens/typescript-config": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

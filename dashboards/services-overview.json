@@ -1,0 +1,299 @@
+{
+  "uid": "tokens-services-overview",
+  "title": "Services overview",
+  "description": "Single-pane view of every tokens.xyz service emitting into the Loki tenant.",
+  "tags": [
+    "tokens",
+    "services"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "level",
+        "label": "Log level",
+        "type": "custom",
+        "query": "ERROR : error|exception|fatal|failure|5\\d\\d, WARN : warn|error|exception|fatal|failure|5\\d\\d, ALL : .",
+        "current": {
+          "selected": false,
+          "text": "ERROR",
+          "value": "error|exception|fatal|failure|5\\d\\d"
+        },
+        "options": [
+          {
+            "text": "ERROR",
+            "value": "error|exception|fatal|failure|5\\d\\d",
+            "selected": true
+          },
+          {
+            "text": "WARN",
+            "value": "warn|error|exception|fatal|failure|5\\d\\d",
+            "selected": false
+          },
+          {
+            "text": "ALL",
+            "value": ".",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Log volume by service",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(service) (rate({service=~\"tokens-.+\"} [1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "logs/s"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "tokens-api",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"tokens-api\"} [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "tokens-app",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"tokens-app\"} [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "tokens-docs",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"tokens-docs\"} [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "tokens-web",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"tokens-web\"} [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "tokens-clerk",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"tokens-clerk\"} [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Clerk — event types",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(event_type) (rate({service=\"tokens-clerk\"} [5m]))",
+          "legendFormat": "{{event_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "events/s"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "logs",
+      "title": "Cross-service log stream ($level)",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\"tokens-.+\"} |~ `(?i)($level)`"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "tags": [
+          "deploy"
+        ],
+        "type": "tags"
+      }
+    ]
+  }
+}

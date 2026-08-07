@@ -1,0 +1,14 @@
+[Unit]
+Description=tokens.xyz API usage digest (daily Slack post)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=runner
+EnvironmentFile=/etc/tokens-runner/env
+WorkingDirectory=/home/runner/tokens
+ExecStart=/home/runner/tokens/infra/cron/usage-digest.sh
+TimeoutStartSec=5min
+StandardOutput=journal
+StandardError=journal

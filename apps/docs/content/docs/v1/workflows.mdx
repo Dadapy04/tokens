@@ -1,0 +1,118 @@
+---
+title: Common Workflows
+description: How to combine endpoints to build real integrations.
+---
+
+This page focuses on _how users typically chain endpoints_, not the full response schema.
+
+## Workflow: Search → Canonical asset detail page
+
+Use this when you have a user search box and want to render a token detail page.
+
+1. Search:
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/search?q=solana&limit=5" \
+  -H "x-api-key: $API_KEY"
+```
+
+2. Pick `results[0].assetId`, then fetch the canonical asset with includes:
+
+```bash
+ASSET_ID="solana"
+curl -sS "$API_BASE_URL/v1/assets/$ASSET_ID?include=profile,risk,ohlcv,markets" \
+  -H "x-api-key: $API_KEY"
+```
+
+Why this works well:
+
+- One endpoint can return `profile`, `risk`, `ohlcv`, and `markets` as separate include blocks.
+- Includes are best-effort: your UI can render what’s available and degrade gracefully.
+
+## Workflow: Asset reference → canonical asset mapping
+
+Use this when you start from a Solana mint address (wallet holdings, swap input, onchain events), or when you have an alias / `assetId` and want the canonical mapping.
+
+```bash
+MINT="So11111111111111111111111111111111111111112"
+curl -sS "$API_BASE_URL/v1/assets/resolve?ref=$MINT" \
+  -H "x-api-key: $API_KEY"
+```
+
+Then:
+
+- Use the returned `assetId` to fetch canonical asset data (and optionally includes).
+
+## Workflow: Group wallet balances by canonical asset
+
+Use this when an address has multiple token balances and you want to group variants that represent the same asset, such as USD stablecoins or tokenized Tesla shares.
+
+```bash
+MINT="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+curl -sS "$API_BASE_URL/v1/assets/resolve?mint=$MINT" \
+  -H "x-api-key: $API_KEY"
+
+curl -sS "$API_BASE_URL/v1/assets/solana-$MINT" \
+  -H "x-api-key: $API_KEY"
+```
+
+Both calls identify `usd` as the canonical grouping asset. Use that `assetId` as your grouping key, then fetch `/v1/assets/usd/variants` when you need the other mints in the group.
+
+The detail and collection responses can include `asset.stats.volume30dUSD`, a nullable rolling 30-day USD volume sum for the canonical group. Use it directly when populated instead of summing daily candles client-side.
+
+## Workflow: Watchlist snapshots (many mints)
+
+Use this when you have a list of mints and want to render a watchlist quickly.
+
+### Option A: `variant-markets` (query string, max 50)
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/variant-markets?mints=$MINT1,$MINT2,$MINT3" \
+  -H "x-api-key: $API_KEY"
+```
+
+### Option B: `market-snapshots` (JSON body, max 250)
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/market-snapshots" \
+  -H "x-api-key: $API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"mints":["MINT1","MINT2","MINT3"]}'
+```
+
+Practical guidance:
+
+- Use **Option A** for lightweight “is there data cached for these mints?” checks.
+- Use **Option B** when you have larger lists and want a single request/response body.
+
+## Workflow: Market + tickers for a canonical asset
+
+Use this to build “Where can I trade this?” UI.
+
+1. Markets (DEX markets list for a mint of the asset):
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/$ASSET_ID/markets?limit=20" \
+  -H "x-api-key: $API_KEY"
+```
+
+2. Tickers (exchange tickers; requires an external listing ID for the asset):
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/$ASSET_ID/tickers?limit=20" \
+  -H "x-api-key: $API_KEY"
+```
+
+## Workflow: “Risk badge” for a mint
+
+Use this when you have a single mint address and want a fast signal.
+
+```bash
+curl -sS "$API_BASE_URL/v1/assets/risk-summary?mint=$MINT" \
+  -H "x-api-key: $API_KEY"
+```
+
+Notes:
+
+- If cached market data is missing, you’ll get an “Insufficient Data” style response.

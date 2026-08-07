@@ -1,0 +1,144 @@
+data "google_project" "this" {}
+
+import {
+  to = module.env.module.network.google_compute_subnetwork.subnet
+  id = "projects/${data.google_project.this.project_id}/regions/${var.region}/subnetworks/tokens-subnet-prd-us"
+}
+
+import {
+  to = module.env.module.network.google_compute_router.nat_router
+  id = "projects/${data.google_project.this.project_id}/regions/${var.region}/routers/tokens-router-prd-us"
+}
+
+import {
+  to = module.env.module.network.google_compute_router_nat.nat
+  id = "${data.google_project.this.project_id}/${var.region}/tokens-router-prd-us/tokens-nat-prd"
+}
+
+import {
+  to = module.env.module.network.google_compute_address.nat_static
+  id = "projects/${data.google_project.this.project_id}/regions/${var.region}/addresses/tokens-nat-static-prd"
+}
+
+import {
+  to = module.env.module.artifact_registry.google_artifact_registry_repository.containers
+  id = "projects/${data.google_project.this.project_id}/locations/${var.region}/repositories/tokens-prd"
+}
+
+import {
+  to = module.env.module.scheduler_tasks.google_cloud_tasks_queue.queues["prunes"]
+  id = "projects/${data.google_project.this.project_id}/locations/${var.region}/queues/tokens-prunes-prd"
+}
+
+import {
+  to = module.env.module.scheduler_tasks.google_cloud_tasks_queue.queues["refreshes"]
+  id = "projects/${data.google_project.this.project_id}/locations/${var.region}/queues/tokens-refreshes-prd"
+}
+
+import {
+  to = module.env.module.scheduler_tasks.google_cloud_tasks_queue.queues["rollups"]
+  id = "projects/${data.google_project.this.project_id}/locations/${var.region}/queues/tokens-rollups-prd"
+}
+
+module "env" {
+  source = "../../modules/env"
+
+  project_id     = data.google_project.this.project_id
+  project_number = data.google_project.this.number
+  env            = var.env
+  region         = var.region
+
+  name_suffix = "-us"
+
+  redis_connect_mode            = "DIRECT_PEERING"
+  redis_transit_encryption_mode = "DISABLED"
+  redis_auth_enabled            = false
+
+  cloud_sql_tier                = "db-custom-8-32768"
+  cloud_sql_availability_type   = "REGIONAL"
+  cloud_sql_disk_size_gb        = 100
+  cloud_sql_deletion_protection = true
+  cloud_sql_max_connections     = "1000"
+
+  memorystore_tier           = "STANDARD_HA"
+  memorystore_memory_size_gb = 1
+
+  cloud_run_max_instances         = 10
+  cloud_run_assets_cpu            = "8"
+  cloud_run_assets_memory         = "4Gi"
+  cloud_run_min_instance_services = ["assets", "usage"]
+  cloud_run_assets_min_instances  = 3
+  cloud_run_ingress               = "INGRESS_TRAFFIC_ALL"
+  cloud_run_unauthenticated_services = [
+    "assets",
+    "prices",
+    "usage",
+  ]
+
+  enable_crons         = true
+  enable_load_balancer = true
+  domain               = "api.tokens.xyz"
+}
+
+output "wif_provider" {
+  value = module.env.wif_provider
+}
+
+output "tf_deployer_sa_email" {
+  value = module.env.tf_deployer_sa_email
+}
+
+output "tf_planner_sa_email" {
+  value = module.env.tf_planner_sa_email
+}
+
+output "cloudrun_deployer_sa_email" {
+  value = module.env.cloudrun_deployer_sa_email
+}
+
+output "cloud_run_runtime_sa_email" {
+  value = module.env.cloud_run_runtime_sa_email
+}
+
+output "artifact_registry_url" {
+  value = module.env.artifact_registry_url
+}
+
+output "cloud_run_urls" {
+  value = module.env.cloud_run_urls
+}
+
+output "cloud_sql_connection_name" {
+  value = module.env.cloud_sql_connection_name
+}
+
+output "cloud_sql_app_password" {
+  value     = module.env.cloud_sql_app_password
+  sensitive = true
+}
+
+output "memorystore_host" {
+  value = module.env.memorystore_host
+}
+
+output "memorystore_auth_string" {
+  value     = module.env.memorystore_auth_string
+  sensitive = true
+}
+
+output "lb_ip_address" {
+  value = module.env.lb_ip_address
+}
+
+output "cloudrun_auth_token_secret_id" {
+  value = module.env.cloudrun_auth_token_secret_id
+}
+
+output "cloudrun_auth_token_value" {
+  value     = module.env.cloudrun_auth_token_value
+  sensitive = true
+}
+
+output "database_url_secret_id" {
+  value = module.env.database_url_secret_id
+}

@@ -1,0 +1,15 @@
+{
+  "title": "API v1",
+  "defaultOpen": true,
+  "pages": [
+    "overview",
+    "endpoints-at-a-glance",
+    "quickstart",
+    "authentication",
+    "rate-limits-and-errors",
+    "workflows",
+    "---Reference---",
+    "./endpoints"
+  ]
+}
+

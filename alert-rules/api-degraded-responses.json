@@ -1,0 +1,92 @@
+{
+    "uid": "tokens-api-degraded-responses",
+    "title": "tokens-api: serving degraded responses",
+    "ruleGroup": "tokens-api-availability",
+    "folderUID": "tokens-xyz",
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "for": "2m",
+    "data": [
+        {
+            "refId": "A",
+            "datasourceUid": "grafanacloud-logs",
+            "queryType": "range",
+            "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+            },
+            "model": {
+                "expr": "sum by (operation) (count_over_time({service=\"tokens-api\"} |= \"Defaulting after effect error\" | regexp `operation: '(?P<operation>[^']+)'` [10m]))",
+                "queryType": "range",
+                "refId": "A"
+            }
+        },
+        {
+            "refId": "B",
+            "datasourceUid": "__expr__",
+            "queryType": "",
+            "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+            },
+            "model": {
+                "type": "reduce",
+                "refId": "B",
+                "expression": "A",
+                "reducer": "last",
+                "settings": {
+                    "mode": "replaceNN",
+                    "replaceWithValue": 0
+                }
+            }
+        },
+        {
+            "refId": "C",
+            "datasourceUid": "__expr__",
+            "queryType": "",
+            "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+            },
+            "model": {
+                "type": "threshold",
+                "refId": "C",
+                "expression": "B",
+                "conditions": [
+                    {
+                        "evaluator": {
+                            "type": "gt",
+                            "params": [
+                                20
+                            ]
+                        },
+                        "operator": {
+                            "type": "and"
+                        },
+                        "query": {
+                            "params": [
+                                "B"
+                            ]
+                        },
+                        "reducer": {
+                            "type": "last",
+                            "params": []
+                        },
+                        "type": "query"
+                    }
+                ]
+            }
+        }
+    ],
+    "condition": "C",
+    "labels": {
+        "service": "tokens-api",
+        "severity": "warning",
+        "slack": "true"
+    },
+    "annotations": {
+        "summary": "tokens-api: responses are degrading to fallbacks instead of failing",
+        "description": "An operation has hit its tapErrorAndDefault fallback more than 20 times over the last 10 minutes (label: operation). Callers are getting 200s with missing data (registry identity, null markets) instead of 5xx — the backend dependency behind that operation is failing even though no 5xx alert will fire. Check the operation's error messages in Loki for the unwrapped cause.",
+        "runbook_url": "https://example.com/runbooks/api-degraded-responses"
+    }
+}

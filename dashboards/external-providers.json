@@ -1,0 +1,411 @@
+{
+  "uid": "tokens-external-providers",
+  "title": "External providers",
+  "description": "Birdeye / CoinGecko / Jupiter / Sanctum / RWA / Webacy / OpenAI etc. \u2014 call rate, error rate, latency, retries from fetchJsonWithRetry emissions.",
+  "tags": [
+    "tokens",
+    "external"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "grafanacloud-logs"
+        },
+        "query": {
+          "label": "provider",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{service=~\"tokens-.+\"} | json | event=\"external_call\"",
+          "type": 1
+        },
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Calls (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" [5m]))"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Errors (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\" [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "orange"
+              },
+              {
+                "value": 20,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "p95 latency (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(quantile_over_time(0.95, {service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | unwrap duration_ms [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 2000,
+                "color": "orange"
+              },
+              {
+                "value": 5000,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Error ratio (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\" [5m])) / sum(rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 0.05,
+                "color": "orange"
+              },
+              {
+                "value": 0.3,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Call rate by provider",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" [1m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Error rate by provider",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\" [5m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "p95 latency by provider",
+      "description": "Approximate: avg of per-stream quantile_over_time.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg by(provider) (quantile_over_time(0.95, {service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | unwrap duration_ms [5m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Error ratio by provider",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\" [5m])) / sum by(provider) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" [5m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Top error tags",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(provider, error_tag) (rate({service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\" [5m]))",
+          "legendFormat": "{{provider}} / {{error_tag}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "Recent provider errors",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\"tokens-.+\"} | json | event=\"external_call\" | provider=~\"$provider\" | ok=\"false\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "tags": [
+          "deploy"
+        ],
+        "type": "tags"
+      }
+    ]
+  }
+}

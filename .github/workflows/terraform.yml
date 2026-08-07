@@ -1,0 +1,263 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.9.8
+  GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+  GCP_REGION: us-east4
+
+jobs:
+  fmt-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt
+        run: terraform -chdir=terraform fmt -recursive -check -diff
+
+      - name: terraform validate (per env)
+        run: |
+          set -euo pipefail
+          for env in stg prd; do
+            echo "::group::validate $env"
+            terraform -chdir=terraform/envs/$env init -backend=false
+            terraform -chdir=terraform/envs/$env validate
+            echo "::endgroup::"
+          done
+
+  plan:
+    needs: fmt-validate
+    # Skip on fork PRs: they cannot mint the GCP OIDC token (id-token: write) and
+    # only get a read-only GITHUB_TOKEN, so the plan + PR-comment steps would fail.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [stg, prd]
+    environment: ${{ matrix.env == 'prd' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_PLANNER_SA }}
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/${{ matrix.env }} init
+
+      - name: terraform plan
+        run: |
+          set -o pipefail
+          terraform -chdir=terraform/envs/${{ matrix.env }} plan \
+            -no-color -input=false -out=tfplan \
+            | tee plan-${{ matrix.env }}.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
+        with:
+          name: tfplan-${{ matrix.env }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            terraform/envs/${{ matrix.env }}/tfplan
+            plan-${{ matrix.env }}.txt
+          retention-days: 7
+
+      - name: Comment plan on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SUMMARY=$(grep -E '^Plan:|No changes.' plan-${{ matrix.env }}.txt | tail -1 || echo "Plan summary unavailable")
+          ACTIONS=$(grep -E '^  # .* (will be|must be) ' plan-${{ matrix.env }}.txt | sed 's/^  # //' || true)
+          DESTRUCTIVE=$(printf '%s\n' "$ACTIONS" | grep -cE 'destroyed|replaced' || true)
+          MARKER="<!-- tfplan-${{ matrix.env }} -->"
+          {
+            echo "$MARKER"
+            echo "## Terraform plan — ${{ matrix.env }}"
+            if [ "$DESTRUCTIVE" -gt 0 ]; then
+              echo "> [!WARNING]"
+              echo "> **$DESTRUCTIVE resource(s) will be destroyed or replaced. Read before merging — apply runs on merge.**"
+            fi
+            echo
+            echo "\`$SUMMARY\`"
+            echo
+            echo '<details><summary>Resource actions</summary>'
+            echo
+            echo '```'
+            printf '%s\n' "$ACTIONS" | head -200
+            echo '```'
+            echo '</details>'
+          } > comment.md
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$EXISTING" -F body=@comment.md > /dev/null
+          else
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file comment.md
+          fi
+
+  apply_stg:
+    needs: fmt-validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_DEPLOYER_SA }}
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/stg init
+
+      - name: terraform plan
+        run: terraform -chdir=terraform/envs/stg plan -input=false -out=tfplan
+
+      - name: terraform apply
+        run: terraform -chdir=terraform/envs/stg apply -input=false tfplan
+
+  # Infra changes must prove stage still WORKS, not just that the apply
+  # succeeded, before prod gets them — same gate the app deploys use.
+  stage_smoke:
+    needs: apply_stg
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - run: bun install --frozen-lockfile
+
+      - name: Stage smoke gate
+        run: |
+          set -euo pipefail
+          export TOKENS_API_BASE_URL=$(doppler secrets get TOKENS_API_STAGE_URL --plain --project tokens --config prd)
+          export TOKENS_APP_BASE_URL=$(doppler secrets get TOKENS_APP_STAGE_URL --plain --project tokens --config prd)
+          export TOKENS_API_KEY=$(doppler secrets get TOKENS_API_KEY_STAGING --plain --project tokens --config prd)
+          bun scripts/smoke-canary.ts
+
+  apply_prd:
+    needs: stage_smoke
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_DEPLOYER_SA }}
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/prd init
+
+      - name: terraform plan
+        run: terraform -chdir=terraform/envs/prd plan -input=false -out=tfplan
+
+      - name: terraform apply
+        run: terraform -chdir=terraform/envs/prd apply -input=false tfplan
+
+  notify_end:
+    needs: [apply_stg, stage_smoke, apply_prd]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - name: Notify Slack — terraform result
+        env:
+          STG: ${{ needs.apply_stg.result }}
+          SMOKE: ${{ needs.stage_smoke.result }}
+          PRD: ${{ needs.apply_prd.result }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          SLACK_WEBHOOK=$(doppler secrets get SLACK_DEPLOY_WEBHOOK_URL --plain --project tokens --config prd)
+          [ -z "$SLACK_WEBHOOK" ] && exit 0
+          SHA=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --format=%s HEAD 2>/dev/null | cut -c1-140 || echo "")
+          if [ "$STG" = "success" ] && [ "$SMOKE" = "success" ] && [ "$PRD" = "success" ]; then
+            MARKER="[SUCCESS] Terraform Apply"; COLOR="#36a64f"
+          else
+            MARKER="[FAILED] Terraform Apply"; COLOR="#d00000"
+          fi
+          RESULT="stg: $STG / smoke: $SMOKE / prd: $PRD"
+          PAYLOAD=$(jq -n \
+            --arg marker "$MARKER" --arg result "$RESULT" \
+            --arg short_sha "${SHA:0:7}" --arg commit_msg "$COMMIT_MSG" \
+            --arg actor "$ACTOR" --arg run_url "$RUN_URL" --arg run_id "$RUN_ID" \
+            --arg color "$COLOR" \
+            '{
+              text: ("*" + $marker + "* — " + $result),
+              attachments: [{
+                color: $color,
+                blocks: [
+                  {type:"section", text:{type:"mrkdwn", text:("*" + $marker + "*")}},
+                  {type:"section", fields:[
+                    {type:"mrkdwn", text:("*Result:*\n" + $result)},
+                    {type:"mrkdwn", text:("*Commit:*\n`" + $short_sha + "` — " + $commit_msg)},
+                    {type:"mrkdwn", text:("*Triggered by:*\n" + $actor)},
+                    {type:"mrkdwn", text:("*Run:*\n<" + $run_url + "|workflow #" + $run_id + ">")}
+                  ]}
+                ]
+              }]
+            }')
+          curl -sf -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK" > /dev/null

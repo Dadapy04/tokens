@@ -1,0 +1,11 @@
+[Unit]
+Description=Trigger tokens.xyz API health smoke every minute
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=10s
+Persistent=true
+Unit=tokens-api-health.service
+
+[Install]
+WantedBy=timers.target

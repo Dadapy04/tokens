@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+@import '@solana/design-system/styles';
+@import '@solana/design-system/base.css';
+
+/* Tailwind v4 source scanning for shared UI package */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
+
+:root {
+    --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+    --font-inter: var(--font-sans);
+    --font-berkeley-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    --font-abc-diatype: var(--font-sans);
+}
+
+.font-berkeley-mono {
+    font-family: var(--font-berkeley-mono);
+    font-weight: 400;
+}
+
+.font-inter {
+    font-family: var(--font-inter);
+}
+
+.font-inter-medium {
+    font-family: var(--font-inter);
+    font-weight: 520;
+}
+
+.font-inter-semibold {
+    font-family: var(--font-inter);
+    font-weight: 580;
+}

@@ -1,0 +1,3 @@
+export const DEFAULT_MARKETS_STALE_MS = 60 * 60_000;
+export const EQUITY_MARKETS_STALE_MS = 2 * 60_000;
+

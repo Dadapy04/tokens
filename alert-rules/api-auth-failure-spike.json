@@ -1,0 +1,93 @@
+{
+  "uid": "tokens-api-auth-failure-spike",
+  "title": "tokens-api: auth-failure spike (401)",
+  "ruleGroup": "tokens-api-availability",
+  "folderUID": "tokens-xyz",
+  "noDataState": "OK",
+  "execErrState": "OK",
+  "for": "10m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "model": {
+        "expr": "sum(rate({service=\"tokens-api\"} | json | event=\"http_request\" | status=\"401\" [5m]))",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "gt",
+              "params": [
+                2.0
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ],
+  "condition": "C",
+  "labels": {
+    "service": "tokens-api",
+    "severity": "warning",
+    "pagerduty": "false",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "tokens-api 401 rate above 2/sec",
+    "description": "tokens-api returned HTTP 401 (auth failure) at more than 2/sec sustained for 10 minutes. Could be a misconfigured client (frontend env var drift), a rotated API key, or credential-stuffing attempts. Check Recent 5xx errors panel and filter by status=401.",
+    "runbook_url": "https://example.com/runbooks/api-auth-failure-spike"
+  }
+}

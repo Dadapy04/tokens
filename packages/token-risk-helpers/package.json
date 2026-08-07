@@ -1,0 +1,24 @@
+{
+  "name": "@tokens/token-risk-helpers",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@tokens/asset-registry": "workspace:*"
+  },
+  "devDependencies": {
+    "@tokens/typescript-config": "workspace:*"
+  }
+}

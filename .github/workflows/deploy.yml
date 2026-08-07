@@ -1,0 +1,667 @@
+name: Tokens Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy (defaults to main)'
+        required: false
+        default: 'main'
+      cloudrun:
+        description: 'Cloud Run services (auto = detect from changed files vs HEAD^)'
+        required: false
+        type: choice
+        default: auto
+        options: [auto, none, all, assets, prices, usage, admin]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      assets: ${{ steps.detect.outputs.assets }}
+      services: ${{ steps.detect.outputs.services }}
+      tiers: ${{ steps.detect.outputs.tiers }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 2
+
+      # Path-detection with manual override, mirroring geyser-data's deploy
+      # tiers: `auto` (default) resolves from the changed files; a named
+      # service forces exactly that one; `all` forces every service; `none`
+      # skips Cloud Run entirely. packages/ is shared — baked into every
+      # image — so any change there rebuilds all four.
+      - id: detect
+        env:
+          MODE: ${{ inputs.cloudrun || 'auto' }}
+        run: |
+          set -euo pipefail
+          CHANGED_FILES=""
+          if [ "${{ github.event_name }}" = "push" ]; then
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+          fi
+          match() { echo "$CHANGED_FILES" | grep -qE "$1"; }
+
+          changed=""
+          case "$MODE" in
+            none) ;;
+            all) changed="assets prices usage admin" ;;
+            assets|prices|usage|admin) changed="$MODE" ;;
+            auto|*)
+              for svc in assets prices usage admin; do
+                match "^(apps/cloudrun-$svc/|packages/)" && changed="$changed $svc"
+              done
+              ;;
+          esac
+          changed=$(echo $changed)
+          services='[]'
+          [ -n "$changed" ] && services=$(printf '%s\n' $changed | jq -R . | jq -sc .)
+          assets=false
+          case " $changed " in *" assets "*) assets=true;; esac
+          tiers="api+app"
+          [ -n "$changed" ] && tiers="api+app+cloud-run/{${changed// /,}}"
+          echo "assets=$assets" >> "$GITHUB_OUTPUT"
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "tiers=$tiers" >> "$GITHUB_OUTPUT"
+
+  notify_start:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - name: Notify Slack — deploy started
+        env:
+          TIERS: ${{ needs.changes.outputs.tiers }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          SLACK_WEBHOOK=$(doppler secrets get SLACK_DEPLOY_WEBHOOK_URL --plain --project tokens --config prd)
+          [ -z "$SLACK_WEBHOOK" ] && exit 0
+          SHA=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --format=%s HEAD 2>/dev/null | cut -c1-140 || echo "")
+          PAYLOAD=$(jq -n \
+            --arg marker "[STARTED] Tokens Deploy" \
+            --arg tiers "$TIERS" \
+            --arg short_sha "${SHA:0:7}" --arg commit_msg "$COMMIT_MSG" \
+            --arg actor "$ACTOR" --arg run_url "$RUN_URL" --arg run_id "$RUN_ID" \
+            '{
+              text: ("*" + $marker + "* — tiers: `" + $tiers + "`"),
+              attachments: [{
+                color: "#36a64f",
+                blocks: [
+                  {type:"section", text:{type:"mrkdwn", text:("*" + $marker + "*")}},
+                  {type:"section", fields:[
+                    {type:"mrkdwn",text:("*Tiers:*\n`"+$tiers+"`")},
+                    {type:"mrkdwn",text:("*Commit:*\n`"+$short_sha+"` — "+$commit_msg)},
+                    {type:"mrkdwn",text:("*Triggered by:*\n"+$actor)},
+                    {type:"mrkdwn",text:("*Run:*\n<"+$run_url+"|workflow #"+$run_id+">")}
+                  ]}
+                ]
+              }]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK" || true
+
+  cloudrun_stg:
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - id: sha
+        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CLOUDRUN_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a # v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker us-east4-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: build
+        env:
+          IMAGE: us-east4-docker.pkg.dev/${{ vars.GCP_PROJECT }}/tokens-stg/${{ matrix.service }}:${{ steps.sha.outputs.value }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE" -f apps/cloudrun-${{ matrix.service }}/Dockerfile .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloud Run revision (stg)
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          gcloud run deploy tokens-${{ matrix.service }}-stg-us \
+            --image="$IMAGE" \
+            --region=us-east4 \
+            --project=${{ vars.GCP_PROJECT }} \
+            --quiet
+
+  deploy:
+    needs: [changes, notify_start, cloudrun_stg]
+    if: >-
+      always() &&
+      (needs.cloudrun_stg.result == 'success' || needs.cloudrun_stg.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      DOPPLER_PROJECT: tokens
+      DOPPLER_CONFIG: prd
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - run: bun install --frozen-lockfile
+
+      - name: Fetch secrets from Doppler
+        id: secrets
+        run: |
+          set -euo pipefail
+          for key in \
+            SLACK_DEPLOY_WEBHOOK_URL \
+            VERCEL_TOKEN \
+            VERCEL_PROJECT_ID \
+            VERCEL_PROJECT_ID_APP \
+            TOKENS_API_KEY \
+            TOKENS_API_KEY_STAGING \
+            CLERK_JWT_ISSUER_DOMAIN \
+            TOKENS_API_STAGE_URL \
+            TOKENS_API_PROD_URL \
+            TOKENS_APP_STAGE_URL \
+            TOKENS_APP_PROD_URL; do
+            value=$(doppler secrets get "$key" --plain --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG")
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Build Slack fields
+        id: summary
+        env:
+          TIERS: ${{ needs.changes.outputs.tiers }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --format=%s HEAD 2>/dev/null | cut -c1-140 || echo "")
+          FIELDS=$(jq -n \
+            --arg tiers      "$TIERS" \
+            --arg short_sha  "${SHA:0:7}" \
+            --arg commit_msg "$COMMIT_MSG" \
+            --arg actor      "$ACTOR" \
+            --arg run_url    "$RUN_URL" \
+            --arg run_id     "$RUN_ID" \
+            '[
+              {type:"mrkdwn",text:("*Tiers:*\n`"+$tiers+"`")},
+              {type:"mrkdwn",text:("*Commit:*\n`"+$short_sha+"` — "+$commit_msg)},
+              {type:"mrkdwn",text:("*Triggered by:*\n"+$actor)},
+              {type:"mrkdwn",text:("*Run:*\n<"+$run_url+"|workflow #"+$run_id+">")}
+            ]')
+          {
+            echo 'fields<<JQ_EOF'
+            echo "$FIELDS"
+            echo 'JQ_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Vercel CLI
+        run: bun add -g vercel@54.9.0
+
+      - name: Deploy API to stage (Vercel preview)
+        id: deploy_api_stage
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          STAGE_URL=$(vercel deploy --yes --token="$VERCEL_TOKEN" --scope solana-foundation)
+          echo "stage_url=$STAGE_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed tokens-api stage: $STAGE_URL"
+
+      - name: Alias API stage to TOKENS_API_STAGE_URL
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID }}
+          STAGE_URL: ${{ steps.deploy_api_stage.outputs.stage_url }}
+          TOKENS_API_STAGE_URL: ${{ steps.secrets.outputs.TOKENS_API_STAGE_URL }}
+        run: |
+          set -euo pipefail
+          domain="${TOKENS_API_STAGE_URL#https://}"
+          domain="${domain#http://}"
+          domain="${domain%/}"
+          vercel alias set "$STAGE_URL" "$domain" --token="$VERCEL_TOKEN" --scope solana-foundation
+
+      - name: Deploy APP to stage (Vercel preview)
+        id: deploy_app_stage
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID_APP }}
+        run: |
+          set -euo pipefail
+          STAGE_URL=$(vercel deploy --yes --token="$VERCEL_TOKEN" --scope solana-foundation)
+          echo "stage_url=$STAGE_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed tokens-app stage: $STAGE_URL"
+
+      - name: Alias APP stage to TOKENS_APP_STAGE_URL
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID_APP }}
+          STAGE_URL: ${{ steps.deploy_app_stage.outputs.stage_url }}
+          TOKENS_APP_STAGE_URL: ${{ steps.secrets.outputs.TOKENS_APP_STAGE_URL }}
+        run: |
+          set -euo pipefail
+          domain="${TOKENS_APP_STAGE_URL#https://}"
+          domain="${domain#http://}"
+          domain="${domain%/}"
+          vercel alias set "$STAGE_URL" "$domain" --token="$VERCEL_TOKEN" --scope solana-foundation
+
+      - name: API stage smoke gate
+        env:
+          TOKENS_API_BASE_URL: ${{ steps.secrets.outputs.TOKENS_API_STAGE_URL }}
+          TOKENS_APP_BASE_URL: ${{ steps.secrets.outputs.TOKENS_APP_STAGE_URL }}
+          TOKENS_API_KEY: ${{ steps.secrets.outputs.TOKENS_API_KEY_STAGING }}
+        run: bun scripts/smoke-canary.ts
+
+      # teamId is required for team-owned projects; without it the API returns
+      # no deployments and rollback silently breaks.
+      - name: Capture previous prod deployment ID (API)
+        id: prev_api
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          PREV=$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_ORG_ID&target=production&state=READY&limit=1" \
+            | jq -r '.deployments[0].uid // empty')
+          [ -n "$PREV" ] && echo "Previous API prod: $PREV" || echo "WARNING: no previous API prod deployment"
+          echo "deployment_id=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Capture previous prod deployment ID (APP)
+        id: prev_app
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID_APP: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID_APP }}
+        run: |
+          set -euo pipefail
+          PREV=$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID_APP&teamId=$VERCEL_ORG_ID&target=production&state=READY&limit=1" \
+            | jq -r '.deployments[0].uid // empty')
+          [ -n "$PREV" ] && echo "Previous APP prod: $PREV" || echo "WARNING: no previous APP prod deployment"
+          echo "deployment_id=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API to production
+        id: deploy_api_prod
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          PROD_URL=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" --scope solana-foundation)
+          echo "prod_url=$PROD_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed tokens-api prod: $PROD_URL"
+
+      - name: Alias API prod to TOKENS_API_PROD_URL
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID }}
+          PROD_URL: ${{ steps.deploy_api_prod.outputs.prod_url }}
+          TOKENS_API_PROD_URL: ${{ steps.secrets.outputs.TOKENS_API_PROD_URL }}
+        run: |
+          set -euo pipefail
+          domain="${TOKENS_API_PROD_URL#https://}"
+          domain="${domain#http://}"
+          domain="${domain%/}"
+          for attempt in 1 2 3; do
+            if vercel alias set "$PROD_URL" "$domain" --token="$VERCEL_TOKEN" --scope solana-foundation; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "alias attempt $attempt failed, retrying in 5s..." >&2
+              sleep 5
+            fi
+          done
+          echo "alias failed after 3 attempts" >&2
+          exit 1
+
+      - name: Deploy APP to production
+        id: deploy_app_prod
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID_APP }}
+        run: |
+          set -euo pipefail
+          PROD_URL=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" --scope solana-foundation)
+          echo "prod_url=$PROD_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed tokens-app prod: $PROD_URL"
+
+      - name: Alias APP prod to TOKENS_APP_PROD_URL
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ steps.secrets.outputs.VERCEL_PROJECT_ID_APP }}
+          PROD_URL: ${{ steps.deploy_app_prod.outputs.prod_url }}
+          TOKENS_APP_PROD_URL: ${{ steps.secrets.outputs.TOKENS_APP_PROD_URL }}
+        run: |
+          set -euo pipefail
+          domain="${TOKENS_APP_PROD_URL#https://}"
+          domain="${domain#http://}"
+          domain="${domain%/}"
+          for attempt in 1 2 3; do
+            if vercel alias set "$PROD_URL" "$domain" --token="$VERCEL_TOKEN" --scope solana-foundation; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "alias attempt $attempt failed, retrying in 5s..." >&2
+              sleep 5
+            fi
+          done
+          echo "alias failed after 3 attempts" >&2
+          exit 1
+
+      - name: Prod canary (run 1)
+        id: canary_1
+        env:
+          TOKENS_API_BASE_URL: ${{ steps.secrets.outputs.TOKENS_API_PROD_URL }}
+          TOKENS_APP_BASE_URL: ${{ steps.secrets.outputs.TOKENS_APP_PROD_URL }}
+          # Public marketing site — guards against a prod deploy aliasing the
+          # Clerk-gated dashboard onto the apex domain (login screen on tokens.xyz).
+          TOKENS_WEB_BASE_URL: https://tokens.xyz
+          TOKENS_API_KEY: ${{ steps.secrets.outputs.TOKENS_API_KEY }}
+          SMOKE_REQUIRE_PROD_CLERK: true
+        run: bun scripts/smoke-canary.ts
+
+      - name: Cold-start gap
+        run: sleep 15
+
+      - name: Prod canary (run 2)
+        id: canary_2
+        env:
+          TOKENS_API_BASE_URL: ${{ steps.secrets.outputs.TOKENS_API_PROD_URL }}
+          TOKENS_APP_BASE_URL: ${{ steps.secrets.outputs.TOKENS_APP_PROD_URL }}
+          TOKENS_WEB_BASE_URL: https://tokens.xyz
+          TOKENS_API_KEY: ${{ steps.secrets.outputs.TOKENS_API_KEY }}
+          SMOKE_REQUIRE_PROD_CLERK: true
+        run: bun scripts/smoke-canary.ts
+
+      - name: Rollback (post-prod-deploy failure)
+        if: failure() && (steps.deploy_api_prod.outcome == 'success' || steps.deploy_app_prod.outcome == 'success')
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.VERCEL_TOKEN }}
+          PREV_API: ${{ steps.prev_api.outputs.deployment_id }}
+          PREV_APP: ${{ steps.prev_app.outputs.deployment_id }}
+          DEPLOYED_API: ${{ steps.deploy_api_prod.outcome }}
+          DEPLOYED_APP: ${{ steps.deploy_app_prod.outcome }}
+          SLACK_WEBHOOK: ${{ steps.secrets.outputs.SLACK_DEPLOY_WEBHOOK_URL }}
+          FIELDS: ${{ steps.summary.outputs.fields }}
+          TIERS: ${{ needs.changes.outputs.tiers }}
+        run: |
+          set -euo pipefail
+
+          api_status="skipped"
+          app_status="skipped"
+
+          if [ "$DEPLOYED_API" = "success" ]; then
+            if [ -n "$PREV_API" ]; then
+              if vercel rollback "$PREV_API" --token="$VERCEL_TOKEN" --scope solana-foundation; then
+                api_status="rolled_back"
+              else
+                api_status="rollback_failed"
+              fi
+            else
+              api_status="no_prev_deployment"
+            fi
+          fi
+
+          if [ "$DEPLOYED_APP" = "success" ]; then
+            if [ -n "$PREV_APP" ]; then
+              if vercel rollback "$PREV_APP" --token="$VERCEL_TOKEN" --scope solana-foundation; then
+                app_status="rolled_back"
+              else
+                app_status="rollback_failed"
+              fi
+            else
+              app_status="no_prev_deployment"
+            fi
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg marker "[ROLLBACK] Tokens Deploy" \
+            --arg tiers "$TIERS" \
+            --arg color "#ff8800" \
+            --argjson fields "$FIELDS" \
+            --arg api "$api_status" \
+            --arg app "$app_status" \
+            --arg prev_api "$PREV_API" \
+            --arg prev_app "$PREV_APP" \
+            '{
+              text: ("*" + $marker + "* — tiers: `" + $tiers + "`"),
+              attachments: [{
+                color: $color,
+                blocks: [
+                  {type:"section", text:{type:"mrkdwn", text:("*" + $marker + "* — failure after prod deploy")}},
+                  {type:"section", fields:$fields},
+                  {type:"section", text:{type:"mrkdwn", text:("*tokens-api:* "+$api+(if $prev_api != "" then " (target `"+$prev_api+"`)" else "" end)+"\n*tokens-app:* "+$app+(if $prev_app != "" then " (target `"+$prev_app+"`)" else "" end))}}
+                ]
+              }]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK"
+          exit 1
+
+      - name: Annotate Grafana with deploy marker
+        if: success()
+        env:
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          GRAFANA_API_URL=$(doppler secrets get GRAFANA_API_URL --plain --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" 2>/dev/null)
+          GRAFANA_API_TOKEN=$(doppler secrets get GRAFANA_API_TOKEN --plain --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" 2>/dev/null)
+          if [ -z "$GRAFANA_API_URL" ] || [ -z "$GRAFANA_API_TOKEN" ]; then
+            echo "::warning::GRAFANA_API_URL/TOKEN not set in Doppler — skipping deploy annotation"
+            exit 0
+          fi
+          echo "::add-mask::$GRAFANA_API_TOKEN"
+          SHA=$(git rev-parse --short HEAD)
+          NOW_MS=$(( $(date +%s) * 1000 ))
+          PAYLOAD=$(jq -n \
+            --argjson ts "$NOW_MS" \
+            --arg sha "$SHA" --arg actor "$ACTOR" --arg run_url "$RUN_URL" \
+            '{
+              time: $ts,
+              tags: ["deploy", "tokens-xyz", "prod"],
+              text: ("Deploy `" + $sha + "` by " + $actor + " — <" + $run_url + "|run>")
+            }')
+          curl -sS --fail-with-body -X POST "$GRAFANA_API_URL/api/annotations" \
+            -H "Authorization: Bearer $GRAFANA_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" || echo "::warning::Grafana annotation post failed (non-blocking)"
+
+  cloudrun_prd:
+    needs: [changes, deploy]
+    if: needs.changes.outputs.services != '[]' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - id: sha
+        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CLOUDRUN_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a # v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker us-east4-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: build
+        env:
+          IMAGE: us-east4-docker.pkg.dev/${{ vars.GCP_PROJECT }}/tokens-prd/${{ matrix.service }}:${{ steps.sha.outputs.value }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE" -f apps/cloudrun-${{ matrix.service }}/Dockerfile .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloud Run revision (prd)
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          gcloud run deploy tokens-${{ matrix.service }}-prd-us \
+            --image="$IMAGE" \
+            --region=us-east4 \
+            --project=${{ vars.GCP_PROJECT }} \
+            --quiet
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - run: bun install --frozen-lockfile
+
+      - name: Post-deploy prod canary
+        run: |
+          set -euo pipefail
+          export TOKENS_API_BASE_URL=$(doppler secrets get TOKENS_API_PROD_URL --plain --project tokens --config prd)
+          export TOKENS_APP_BASE_URL=$(doppler secrets get TOKENS_APP_PROD_URL --plain --project tokens --config prd)
+          export TOKENS_WEB_BASE_URL=https://tokens.xyz
+          export TOKENS_API_KEY=$(doppler secrets get TOKENS_API_KEY --plain --project tokens --config prd)
+          export SMOKE_REQUIRE_PROD_CLERK=true
+          bun scripts/smoke-canary.ts
+
+  notify_end:
+    needs: [changes, deploy, cloudrun_prd]
+    if: always() && needs.deploy.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+
+      - name: Notify Slack — deploy finished
+        env:
+          TIERS: ${{ needs.changes.outputs.tiers }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          ASSETS_RESULT: ${{ needs.cloudrun_prd.result }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          SLACK_WEBHOOK=$(doppler secrets get SLACK_DEPLOY_WEBHOOK_URL --plain --project tokens --config prd)
+          [ -z "$SLACK_WEBHOOK" ] && exit 0
+          if [ "$DEPLOY_RESULT" = "success" ] && { [ "$ASSETS_RESULT" = "success" ] || [ "$ASSETS_RESULT" = "skipped" ]; }; then
+            STATUS=SUCCESS
+            COLOR='#36a64f'
+          else
+            STATUS=FAILED
+            COLOR='#ff0000'
+          fi
+          SHA=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --format=%s HEAD 2>/dev/null | cut -c1-140 || echo "")
+          PAYLOAD=$(jq -n \
+            --arg marker "[$STATUS] Tokens Deploy" \
+            --arg tiers "$TIERS" \
+            --arg color "$COLOR" \
+            --arg short_sha "${SHA:0:7}" --arg commit_msg "$COMMIT_MSG" \
+            --arg actor "$ACTOR" --arg run_url "$RUN_URL" --arg run_id "$RUN_ID" \
+            --arg vercel "$DEPLOY_RESULT" --arg assets "$ASSETS_RESULT" \
+            '{
+              text: ("*" + $marker + "* — tiers: `" + $tiers + "`"),
+              attachments: [{
+                color: $color,
+                blocks: [
+                  {type:"section", text:{type:"mrkdwn", text:("*" + $marker + "*")}},
+                  {type:"section", fields:[
+                    {type:"mrkdwn",text:("*Tiers:*\n`"+$tiers+"`")},
+                    {type:"mrkdwn",text:("*Result:*\n`api+app: "+$vercel+"` `cloud-run/assets: "+$assets+"`")},
+                    {type:"mrkdwn",text:("*Commit:*\n`"+$short_sha+"` — "+$commit_msg)},
+                    {type:"mrkdwn",text:("*Triggered by:*\n"+$actor)},
+                    {type:"mrkdwn",text:("*Run:*\n<"+$run_url+"|workflow #"+$run_id+">")}
+                  ]}
+                ]
+              }]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK" || true

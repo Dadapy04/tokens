@@ -1,0 +1,140 @@
+{
+  "uid": "tokens-api-5xx-ratio-high",
+  "title": "tokens-api: 5xx ratio > 1% for 5m",
+  "ruleGroup": "tokens-api-availability",
+  "folderUID": "tokens-xyz",
+  "noDataState": "OK",
+  "execErrState": "OK",
+  "for": "5m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "model": {
+        "expr": "sum(rate({service=\"tokens-api\"} | json | event=\"http_request\" | status_class=\"5xx\" [5m])) / sum(rate({service=\"tokens-api\"} | json | event=\"http_request\" [5m]))",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "gt",
+              "params": [
+                0.01
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    },
+    {
+      "refId": "D",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "model": {
+        "expr": "count(sum by (endpoint) (count_over_time({service=\"tokens-api\"} | json | event=\"http_request\" | status_class=\"5xx\" [5m])))",
+        "queryType": "range",
+        "refId": "D"
+      }
+    },
+    {
+      "refId": "E",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "E",
+        "expression": "D",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "F",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "math",
+        "refId": "F",
+        "expression": "$B > 0.01 && $E > 1"
+      }
+    }
+  ],
+  "condition": "F",
+  "labels": {
+    "service": "tokens-api",
+    "severity": "critical",
+    "pagerduty": "true",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "tokens-api 5xx ratio > 1%",
+    "description": "tokens-api is returning 5xx for more than 1% of requests over the last 5 minutes across 2+ endpoints. Single-endpoint failures alert to Slack only (tokens-api: single endpoint erroring). Open the API overview dashboard for endpoint breakdown.",
+    "runbook_url": "https://example.com/runbooks/api-5xx-ratio-high"
+  }
+}

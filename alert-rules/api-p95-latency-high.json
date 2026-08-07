@@ -1,0 +1,93 @@
+{
+  "uid": "tokens-api-p95-latency-high",
+  "title": "tokens-api: p95 latency > 3s for 10m",
+  "ruleGroup": "tokens-api-availability",
+  "folderUID": "tokens-xyz",
+  "noDataState": "OK",
+  "execErrState": "OK",
+  "for": "10m",
+  "data": [
+    {
+      "refId": "A",
+      "datasourceUid": "grafanacloud-logs",
+      "queryType": "range",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "model": {
+        "expr": "avg(quantile_over_time(0.95, {service=\"tokens-api\"} | json | event=\"http_request\" | unwrap duration_ms [5m]))",
+        "queryType": "range",
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "B",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "reduce",
+        "refId": "B",
+        "expression": "A",
+        "reducer": "last",
+        "settings": {
+          "mode": "replaceNN",
+          "replaceWithValue": 0
+        }
+      }
+    },
+    {
+      "refId": "C",
+      "datasourceUid": "__expr__",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "model": {
+        "type": "threshold",
+        "refId": "C",
+        "expression": "B",
+        "conditions": [
+          {
+            "evaluator": {
+              "type": "gt",
+              "params": [
+                3000
+              ]
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": [
+                "B"
+              ]
+            },
+            "reducer": {
+              "type": "last",
+              "params": []
+            },
+            "type": "query"
+          }
+        ]
+      }
+    }
+  ],
+  "condition": "C",
+  "labels": {
+    "service": "tokens-api",
+    "severity": "critical",
+    "pagerduty": "true",
+    "slack": "true"
+  },
+  "annotations": {
+    "summary": "tokens-api p95 latency above 3s",
+    "description": "tokens-api p95 latency has been above 3000ms continuously for the last 10 minutes (rule fires after for=10m sustained). Check the Top 5 slowest endpoints panel for the offending paths.",
+    "runbook_url": "https://example.com/runbooks/api-p95-latency-high"
+  }
+}

@@ -1,0 +1,103 @@
+name: Cloud Run deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Target env (stg / prd)'
+        required: true
+        default: 'stg'
+        type: choice
+        options: [stg, prd]
+      service:
+        description: 'Cloud Run service (assets / prices / usage / admin)'
+        required: true
+        default: 'assets'
+        type: choice
+        options: [assets, prices, usage, admin]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloudrun-deploy-${{ inputs.env }}-${{ inputs.service }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.9.8
+  GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+  GCP_REGION: us-east4
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.env == 'prd' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - id: auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CLOUDRUN_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a # v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        env:
+          IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/tokens-${{ inputs.env }}/${{ inputs.service }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE" -f apps/cloudrun-${{ inputs.service }}/Dockerfile .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+        id: build
+
+      - name: Deploy to Cloud Run
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          gcloud run deploy tokens-${{ inputs.service }}-${{ inputs.env }}-us \
+            --image="$IMAGE" \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT }} \
+            --quiet
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          [ -z "${SLACK_WEBHOOK:-}" ] && exit 0
+          STATUS="${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
+          COLOR="${{ job.status == 'success' && '#36a64f' || '#ff0000' }}"
+          MARKER="[$STATUS] Deploy Tokens API"
+          FIELDS=$(jq -n \
+            --arg env "${{ inputs.env }}" --arg svc "${{ inputs.service }}" \
+            --arg sha "${GITHUB_SHA:0:7}" --arg actor "$GITHUB_ACTOR" \
+            --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '[
+              {type:"mrkdwn", text:("*Tiers:*\n`cloud-run/"+$svc+"`")},
+              {type:"mrkdwn", text:("*Env:*\n`"+$env+"`")},
+              {type:"mrkdwn", text:("*Commit:*\n`"+$sha+"`")},
+              {type:"mrkdwn", text:("*Triggered by:*\n"+$actor)},
+              {type:"mrkdwn", text:("*Run:*\n<"+$run_url+"|workflow>")}
+            ]')
+          PAYLOAD=$(jq -n \
+            --arg marker "$MARKER" --arg tiers "cloud-run/${{ inputs.service }}" \
+            --arg color "$COLOR" --argjson fields "$FIELDS" \
+            '{
+              text: ("*" + $marker + "* — tiers: `" + $tiers + "`"),
+              attachments: [{ color: $color, blocks: [
+                {type:"section", text:{type:"mrkdwn", text:("*" + $marker + "*")}},
+                {type:"section", fields:$fields}
+              ]}]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK" || true

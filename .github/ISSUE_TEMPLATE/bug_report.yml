@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible bug in the public repo or hosted Tokens surfaces.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for non-security bugs only. For vulnerabilities or sensitive reports, follow `SECURITY.md` instead of opening a public issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the bug clearly and concretely.
+      placeholder: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include exact steps, requests, or URLs when possible.
+      placeholder: |
+        1. Go to ...
+        2. Call ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, app surface, commit SHA, or API route details.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact secrets, tokens, API keys, and personal data.
+    validations:
+      required: false

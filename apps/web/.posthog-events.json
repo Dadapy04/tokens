@@ -1,0 +1,197 @@
+[
+  {
+    "eventName": "search_opened",
+    "eventDescription": "User opened the token search dialog (via keyboard shortcut or click)",
+    "filePath": "src/components/token-search.tsx"
+  },
+  {
+    "eventName": "search_token_selected",
+    "eventDescription": "User selected a token from search results to view its details",
+    "filePath": "src/components/token-search-dialog.tsx"
+  },
+  {
+    "eventName": "category_switched",
+    "eventDescription": "User switched between token category tabs (Majors, Currencies, etc.)",
+    "filePath": "src/components/home/category-tabs.tsx"
+  },
+  {
+    "eventName": "token_clicked",
+    "eventDescription": "User clicked on a token row in the table to view its details",
+    "filePath": "src/components/home/token-table.tsx"
+  },
+  {
+    "eventName": "chart_timeframe_changed",
+    "eventDescription": "User changed the price chart timeframe (24H, 7D, 30D, 90D, 1Y)",
+    "filePath": "src/components/price-chart.tsx"
+  },
+  {
+    "eventName": "chart_interval_changed",
+    "eventDescription": "User changed the price chart interval (1H, 4H, 1D, 1W)",
+    "filePath": "src/components/price-chart.tsx"
+  },
+  {
+    "eventName": "market_clicked",
+    "eventDescription": "User clicked on a market row to view it on Solana Explorer",
+    "filePath": "src/app/token/[address]/components/token-markets-table.tsx"
+  },
+  {
+    "eventName": "markets_page_changed",
+    "eventDescription": "User navigated to a different page in the markets table",
+    "filePath": "src/app/token/[address]/components/token-markets-table.tsx"
+  },
+  {
+    "eventName": "external_link_clicked",
+    "eventDescription": "User clicked an external link (website, twitter, discord, etc.) from token about section",
+    "filePath": "src/app/token/[address]/components/token-about-links-section.tsx"
+  },
+  {
+    "eventName": "token_viewed",
+    "eventDescription": "User viewed a token detail page (conversion funnel top)",
+    "filePath": "src/app/token/[address]/page.tsx"
+  },
+  {
+    "eventName": "risk_details_expanded",
+    "eventDescription": "User expanded the full risk details view from the token risk display (properties: risk_score when available)",
+    "filePath": "src/app/token/[address]/components/token-risk-display.tsx"
+  },
+  {
+    "eventName": "risk_popover_opened",
+    "eventDescription": "User opened the token risk hover popover (properties: token_address, risk_score when available)",
+    "filePath": "src/app/token/[address]/components/token-risk-popover.tsx"
+  },
+  {
+    "eventName": "variant_clicked",
+    "eventDescription": "User clicked a token variant to switch to it (properties: token_address, variant_mint, variant_symbol, surface: drawer/hover_card)",
+    "filePath": "src/app/token/[address]/components/token-variants-badge.tsx"
+  },
+  {
+    "eventName": "variants_panel_opened",
+    "eventDescription": "User opened the token variants panel (properties: token_address, surface: hover_card/drawer)",
+    "filePath": "src/app/token/[address]/components/token-variants-badge.tsx"
+  },
+  {
+    "eventName": "variant_selection_cleared",
+    "eventDescription": "User cleared the selected token variant from the token header (properties: token_address)",
+    "filePath": "src/app/token/[address]/components/token-header.tsx"
+  },
+  {
+    "eventName": "variants_page_changed",
+    "eventDescription": "User navigated to a different page in the asset variants list (properties: asset_id, page_index, previous_page_index)",
+    "filePath": "src/app/[name]/components/asset-variants-list.tsx"
+  },
+  {
+    "eventName": "markets_page_size_changed",
+    "eventDescription": "User changed the page size of the variant top markets table (properties: page_size, previous_page_size, source)",
+    "filePath": "src/app/[name]/components/asset-variant-top-markets-table.tsx"
+  },
+  {
+    "eventName": "address_copied",
+    "eventDescription": "User copied a token mint address from the token header copy button",
+    "filePath": "src/app/token/[address]/components/token-header.tsx"
+  },
+  {
+    "eventName": "wrapper_clicked",
+    "eventDescription": "User clicked a wrapped-token entry to view the wrapper (properties: wrapper_mint, wrapper_symbol, source, token_address)",
+    "filePath": "src/components/token-wrappers.tsx"
+  },
+  {
+    "eventName": "nav_link_clicked",
+    "eventDescription": "User clicked an internal navigation link (properties: destination, link_url, source: header/footer/etc.)",
+    "filePath": "src/components/header.tsx"
+  },
+  {
+    "eventName": "highlight_clicked",
+    "eventDescription": "User clicked a home page highlight card (properties: highlight_type, card_id, token_address, token_symbol, asset_id, link_url, source)",
+    "filePath": "src/components/home/highlights-section.tsx"
+  },
+  {
+    "eventName": "trending_mode_switched",
+    "eventDescription": "User switched the trending mode on the home category tabs (properties: mode, previous_mode)",
+    "filePath": "src/components/home/category-tabs.tsx"
+  },
+  {
+    "eventName": "trending_window_changed",
+    "eventDescription": "User cycled the trending time window on the home category tabs (properties: window, previous_window, mode)",
+    "filePath": "src/components/home/category-tabs.tsx"
+  },
+  {
+    "eventName": "chart_share_opened",
+    "eventDescription": "User opened the chart share flow (properties: token_symbol, timeframe_label)",
+    "filePath": "src/components/chart-share-button.tsx"
+  },
+  {
+    "eventName": "chart_share_generated",
+    "eventDescription": "Chart share image was generated (properties: token_symbol, timeframe_label, clipboard_ok, card_style)",
+    "filePath": "src/components/chart-share-button.tsx"
+  },
+  {
+    "eventName": "chart_share_failed",
+    "eventDescription": "Chart share image generation failed (properties: token_symbol, timeframe_label, message)",
+    "filePath": "src/components/chart-share-button.tsx"
+  },
+  {
+    "eventName": "chart_share_copied_again",
+    "eventDescription": "User re-copied an already generated chart share image (properties: token_symbol, timeframe_label, clipboard_ok)",
+    "filePath": "src/components/chart-share-button.tsx"
+  },
+  {
+    "eventName": "feed_toggled",
+    "eventDescription": "User expanded or collapsed the floating market feed (properties: expanded)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "feed_settings_opened",
+    "eventDescription": "User opened the floating market feed settings menu (properties: source)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "feed_size_changed",
+    "eventDescription": "User cycled the floating market feed size (properties: size)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "feed_source_toggled",
+    "eventDescription": "User toggled a floating market feed source on/off (properties: feed_source: news/tokens, enabled)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "feed_ticker_clicked",
+    "eventDescription": "User clicked a token ticker in the floating market feed (properties: token_address, token_symbol, token_price_change_24h, source)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "banner_dismissed",
+    "eventDescription": "User dismissed the mobile market banner (properties: banner_id, source)",
+    "filePath": "src/components/floating-market-feed.tsx"
+  },
+  {
+    "eventName": "api_cta_clicked",
+    "eventDescription": "User clicked a call-to-action on the Assets API landing page (properties: cta, link_url, source)",
+    "filePath": "src/app/assets-api/hero-section.tsx"
+  },
+  {
+    "eventName": "swap_menu_opened",
+    "eventDescription": "User opened the swap providers menu (properties: token_address, token_symbol, token_name, asset_id, is_variant_view, surface)",
+    "filePath": "src/app/token/[address]/components/swap-providers-dropdown.tsx"
+  },
+  {
+    "eventName": "swap_tab_changed",
+    "eventDescription": "User switched tabs in the desktop swap panel (properties: tab, previous_tab, surface, plus token context)",
+    "filePath": "src/app/token/[address]/components/swap-providers-dropdown.tsx"
+  },
+  {
+    "eventName": "swap_provider_selected",
+    "eventDescription": "User selected a swap provider (properties: provider_name, provider_url, provider_category, surface, plus token context)",
+    "filePath": "src/app/token/[address]/components/swap-providers-dropdown.tsx"
+  },
+  {
+    "eventName": "swap_provider_clicked",
+    "eventDescription": "User confirmed navigation to a swap provider (properties: provider_name, provider_url, provider_category, surface, plus token context)",
+    "filePath": "src/app/token/[address]/components/swap-providers-dropdown.tsx"
+  },
+  {
+    "eventName": "swap_provider_cancelled",
+    "eventDescription": "User cancelled pending navigation to a swap provider (properties: provider_name, provider_url, provider_category, surface, plus token context)",
+    "filePath": "src/app/token/[address]/components/swap-providers-dropdown.tsx"
+  }
+]

@@ -1,0 +1,529 @@
+import { describe, expect, it } from 'bun:test';
+import type { CanonicalAsset } from '@tokens/asset-registry';
+
+import {
+    aggregateTokenStats,
+    computeCompanyMarketCapUsd,
+    isCanonicalPublicEquityAsset,
+    parsePrimaryVariantStrategy,
+    parseStockVariantTier,
+    parseVariantSortBy,
+    selectCanonicalAssetStats,
+    type TokenMarketSnapshot,
+    variantMatchesFilters,
+} from './_asset-helpers';
+
+function makeToken(address: string, overrides: Partial<TokenMarketSnapshot>): TokenMarketSnapshot {
+    return {
+        address,
+        source: 'birdeye',
+        metricsSource: 'birdeye',
+        symbol: null,
+        name: null,
+        decimals: 6,
+        logoURI: null,
+        liquidity: null,
+        volume24hUSD: null,
+        trade1h: null,
+        trade24h: null,
+        uniqueWallet1h: null,
+        uniqueWallet24h: null,
+        price: null,
+        priceChange24hPercent: null,
+        priceChange1hPercent: null,
+        marketCap: null,
+        fdv: null,
+        holder: null,
+        totalSupply: null,
+        circulatingSupply: null,
+        ...overrides,
+    };
+}
+
+function makeAsset(mints: string[]): CanonicalAsset {
+    return {
+        assetId: 'example-stock',
+        name: 'Example Stock',
+        symbol: 'EXM',
+        category: 'equity',
+        variants: mints.map(mint => ({
+            mint,
+            kind: 'tokenized_equity' as const,
+        })),
+    } as CanonicalAsset;
+}
+
+describe('primary variant strategy parsing', () => {
+    it('defaults to liquidity', () => {
+        expect(parsePrimaryVariantStrategy(null)).toBe('liquidity');
+        expect(parsePrimaryVariantStrategy('')).toBe('liquidity');
+        expect(parsePrimaryVariantStrategy('liquidity')).toBe('liquidity');
+        expect(parsePrimaryVariantStrategy('unknown')).toBe('liquidity');
+    });
+
+    it('accepts execution_quality', () => {
+        expect(parsePrimaryVariantStrategy('execution_quality')).toBe('execution_quality');
+    });
+
+    it('accepts stock_redeemability', () => {
+        expect(parsePrimaryVariantStrategy('stock_redeemability')).toBe('stock_redeemability');
+    });
+});
+
+describe('variant sort parsing', () => {
+    it('defaults to liquidity', () => {
+        expect(parseVariantSortBy(null)).toBe('liquidity');
+        expect(parseVariantSortBy('')).toBe('liquidity');
+        expect(parseVariantSortBy('liquidity')).toBe('liquidity');
+        expect(parseVariantSortBy('unknown')).toBe('liquidity');
+    });
+
+    it('accepts execution_quality', () => {
+        expect(parseVariantSortBy('execution_quality')).toBe('execution_quality');
+    });
+
+    it('accepts stock_redeemability', () => {
+        expect(parseVariantSortBy('stock_redeemability')).toBe('stock_redeemability');
+    });
+});
+
+describe('stock variant tier parsing', () => {
+    it('accepts supported stock tiers', () => {
+        expect(parseStockVariantTier('share_redeemable')).toBe('share_redeemable');
+        expect(parseStockVariantTier('cash_redeemable')).toBe('cash_redeemable');
+        expect(parseStockVariantTier('not_redeemable')).toBe('not_redeemable');
+    });
+
+    it('rejects unsupported or empty stock tiers', () => {
+        expect(parseStockVariantTier(null)).toBe(null);
+        expect(parseStockVariantTier('')).toBe(null);
+        expect(parseStockVariantTier('unknown')).toBe(null);
+    });
+});
+
+describe('canonical public equity detection', () => {
+    it('classifies public equity assets with stock symbols', () => {
+        expect(
+            isCanonicalPublicEquityAsset({
+                assetId: 'micron',
+                name: 'Micron Technology',
+                symbol: 'MU',
+                category: 'equity',
+                aliases: ['xstock-micron', 'micron-xstock', 'Backpack Securities'],
+            }),
+        ).toBe(true);
+    });
+
+    it('rejects private and pre-stock equity assets', () => {
+        expect(
+            isCanonicalPublicEquityAsset({
+                assetId: 'pre-abcdef12',
+                name: 'Example PreStocks',
+                symbol: 'EXAMPLE.PRE',
+                category: 'equity',
+                aliases: ['pre-ipo'],
+            }),
+        ).toBe(false);
+    });
+});
+
+describe('variant filter matching', () => {
+    it('filters by stock variant tier', () => {
+        const shareRedeemable = {
+            kind: 'tokenized_equity' as const,
+            liquidityTier: 'tier2' as const,
+            stockVariantTier: 'share_redeemable' as const,
+        };
+        const cashRedeemable = {
+            kind: 'tokenized_equity' as const,
+            liquidityTier: 'tier1' as const,
+            stockVariantTier: 'cash_redeemable' as const,
+        };
+
+        expect(
+            variantMatchesFilters(shareRedeemable, {
+                stockVariantTier: 'share_redeemable',
+            }),
+        ).toBe(true);
+        expect(
+            variantMatchesFilters(cashRedeemable, {
+                stockVariantTier: 'share_redeemable',
+            }),
+        ).toBe(false);
+    });
+
+    it('combines kind, liquidity tier, and stock tier filters', () => {
+        const variant = {
+            kind: 'tokenized_equity' as const,
+            liquidityTier: 'tier2' as const,
+            stockVariantTier: 'share_redeemable' as const,
+        };
+
+        expect(
+            variantMatchesFilters(variant, {
+                kind: 'tokenized_equity',
+                liquidityTier: 'tier2',
+                stockVariantTier: 'share_redeemable',
+            }),
+        ).toBe(true);
+        expect(
+            variantMatchesFilters(variant, {
+                kind: 'tokenized_equity',
+                liquidityTier: 'tier1',
+                stockVariantTier: 'share_redeemable',
+            }),
+        ).toBe(false);
+    });
+});
+
+describe('aggregate token stats', () => {
+    it('liquidity-weights price and price changes across variants', () => {
+        const primary = makeToken('primary', {
+            price: 100,
+            liquidity: 10,
+            volume24hUSD: 100,
+            priceChange24hPercent: 10,
+            priceChange1hPercent: 1,
+            marketCap: 1000,
+            fdv: 1100,
+            totalSupply: 10,
+            circulatingSupply: 9,
+        });
+        const secondary = makeToken('secondary', {
+            price: 200,
+            liquidity: 30,
+            volume24hUSD: 100,
+            priceChange24hPercent: -10,
+            priceChange1hPercent: 3,
+            marketCap: 2000,
+            fdv: 2100,
+            totalSupply: 20,
+            circulatingSupply: 18,
+        });
+        const stats = aggregateTokenStats(
+            makeAsset(['primary', 'secondary']),
+            new Map([
+                ['primary', primary],
+                ['secondary', secondary],
+            ]),
+            primary,
+        );
+
+        expect(stats?.price).toBe(175);
+        expect(stats?.priceChange24hPercent).toBe(-5);
+        expect(stats?.priceChange1hPercent).toBe(2.5);
+        expect(stats?.marketCap).toBe(3000);
+        expect(stats?.fdv).toBe(3200);
+        expect(stats?.totalSupply).toBe(30);
+        expect(stats?.circulatingSupply).toBe(27);
+    });
+
+    it('ignores zero-liquidity price outliers when liquidity weights are available', () => {
+        const primary = makeToken('primary', {
+            price: 100,
+            liquidity: 100,
+            volume24hUSD: 100,
+            priceChange24hPercent: 5,
+        });
+        const outlier = makeToken('outlier', {
+            price: 10000,
+            liquidity: 0,
+            volume24hUSD: 1_000_000,
+            priceChange24hPercent: 500,
+        });
+        const stats = aggregateTokenStats(
+            makeAsset(['primary', 'outlier']),
+            new Map([
+                ['primary', primary],
+                ['outlier', outlier],
+            ]),
+            primary,
+        );
+
+        expect(stats?.price).toBe(100);
+        expect(stats?.priceChange24hPercent).toBe(5);
+    });
+
+    it('falls back to volume-weighted price when no variants have liquidity', () => {
+        const primary = makeToken('primary', {
+            price: 100,
+            liquidity: 0,
+            volume24hUSD: 100,
+        });
+        const secondary = makeToken('secondary', {
+            price: 200,
+            liquidity: 0,
+            volume24hUSD: 300,
+        });
+        const stats = aggregateTokenStats(
+            makeAsset(['primary', 'secondary']),
+            new Map([
+                ['primary', primary],
+                ['secondary', secondary],
+            ]),
+            primary,
+        );
+
+        expect(stats?.price).toBe(175);
+    });
+});
+
+describe('canonical asset stat selection', () => {
+    it('uses CoinGecko fields over stock and aggregate fields when present', () => {
+        const selected = selectCanonicalAssetStats({
+            coingecko: {
+                priceUsd: 100,
+                marketCapUsd: 1000,
+                volume24hUsd: 250,
+                priceChange24hPercent: 5,
+            },
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 800,
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+        });
+
+        expect(selected?.price).toBe(100);
+        expect(selected?.volume24hUSD).toBe(250);
+        expect(selected?.marketCap).toBe(1000);
+        expect(selected?.priceChange24hPercent).toBe(5);
+        expect(selected?.liquidity).toBe(700);
+        expect(selected?.fdv).toBe(900);
+    });
+
+    it('falls back field by field when CoinGecko is missing values', () => {
+        const selected = selectCanonicalAssetStats({
+            coingecko: {
+                priceUsd: 100,
+                marketCapUsd: null,
+                volume24hUsd: null,
+                priceChange24hPercent: null,
+            },
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 800,
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+        });
+
+        expect(selected?.price).toBe(100);
+        expect(selected?.volume24hUSD).toBe(200);
+        expect(selected?.marketCap).toBe(800);
+        expect(selected?.priceChange24hPercent).toBe(4);
+    });
+
+    it('can prefer aggregate 24h volume while keeping canonical price fields', () => {
+        const selected = selectCanonicalAssetStats({
+            coingecko: {
+                priceUsd: 100,
+                marketCapUsd: 1000,
+                volume24hUsd: 250,
+                priceChange24hPercent: 5,
+            },
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 800,
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+            preferAggregateVolume24h: true,
+        });
+
+        expect(selected?.price).toBe(100);
+        expect(selected?.volume24hUSD).toBe(150);
+        expect(selected?.marketCap).toBe(1000);
+        expect(selected?.priceChange24hPercent).toBe(5);
+    });
+
+    it('uses aggregate stats for stock-canonical assets', () => {
+        const selected = selectCanonicalAssetStats({
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 800,
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+            preferStockMarket: true,
+        });
+
+        expect(selected?.price).toBe(80);
+        expect(selected?.volume24hUSD).toBe(150);
+        expect(selected?.priceChange24hPercent).toBe(3);
+        expect(selected?.priceChange1hPercent).toBe(1);
+        expect(selected?.marketCap).toBe(800);
+        expect(selected?.fdv).toBe(900);
+        expect(selected?.totalSupply).toBe(10000);
+        expect(selected?.circulatingSupply).toBe(9000);
+        expect(selected?.liquidity).toBe(700);
+    });
+
+    it('prefers the underlying company market cap for stock-canonical assets', () => {
+        const selected = selectCanonicalAssetStats({
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+                marketCapUsd: 101_645_383_590, // company mcap: price × shares outstanding
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 18_180_000, // tokenized-supply aggregate
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+            preferStockMarket: true,
+        });
+
+        expect(selected?.marketCap).toBe(101_645_383_590);
+        // Everything else still comes from the on-chain aggregate.
+        expect(selected?.price).toBe(80);
+        expect(selected?.volume24hUSD).toBe(150);
+    });
+
+    it('falls back to the tokenized aggregate when company market cap is unavailable', () => {
+        const selected = selectCanonicalAssetStats({
+            stock: {
+                priceUsd: 90,
+                volume24hUsd: 200,
+                priceChange24hPercent: 4,
+                marketCapUsd: null,
+            },
+            aggregate: {
+                price: 80,
+                liquidity: 700,
+                volume24hUSD: 150,
+                volume30dUSD: null,
+                marketCap: 18_180_000,
+                fdv: 900,
+                priceChange24hPercent: 3,
+                priceChange1hPercent: 1,
+                totalSupply: 10000,
+                circulatingSupply: 9000,
+            },
+            preferStockMarket: true,
+        });
+
+        expect(selected?.marketCap).toBe(18_180_000);
+    });
+});
+
+describe('company market cap computation', () => {
+    const NOW = 1_785_300_000_000;
+    const FRESH = NOW - 60_000;
+    const STALE = NOW - 8 * 24 * 60 * 60_000;
+
+    it('multiplies price by shares outstanding for equities', () => {
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: 90, sharesOutstanding: 1_129_393_151, sharesLastFetchedAt: FRESH },
+                NOW,
+            ),
+        ).toBe(90 * 1_129_393_151);
+    });
+
+    it('returns null for commodities (ETF proxy share counts are not asset mcap)', () => {
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'commodity' },
+                { priceUsd: 200, sharesOutstanding: 1_000_000, sharesLastFetchedAt: FRESH },
+                NOW,
+            ),
+        ).toBeNull();
+    });
+
+    it('returns null when the stored share count is stale or has no fetch timestamp', () => {
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: 90, sharesOutstanding: 1_129_393_151, sharesLastFetchedAt: STALE },
+                NOW,
+            ),
+        ).toBeNull();
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: 90, sharesOutstanding: 1_129_393_151 },
+                NOW,
+            ),
+        ).toBeNull();
+    });
+
+    it('returns null when price or shares are missing or non-positive', () => {
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: 90, sharesOutstanding: null, sharesLastFetchedAt: FRESH },
+                NOW,
+            ),
+        ).toBeNull();
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: null, sharesOutstanding: 100, sharesLastFetchedAt: FRESH },
+                NOW,
+            ),
+        ).toBeNull();
+        expect(
+            computeCompanyMarketCapUsd(
+                { category: 'equity' },
+                { priceUsd: 90, sharesOutstanding: 0, sharesLastFetchedAt: FRESH },
+                NOW,
+            ),
+        ).toBeNull();
+        expect(computeCompanyMarketCapUsd({ category: 'equity' }, null, NOW)).toBeNull();
+    });
+});
