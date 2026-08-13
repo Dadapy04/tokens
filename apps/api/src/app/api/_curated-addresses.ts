@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 
 import {
+    assetCollectionsGetMemberMints,
     getSolanaDefaultVariantsViewForApi,
     listSolanaVariantsForApi,
 } from '@/lib/cloudrun';
@@ -54,6 +55,16 @@ async function getDynamicCappedLstMints(): Promise<string[]> {
     }
 }
 
+// DB membership union (fail-open): admin-added tokens surface in the legacy
+// curated lists without a registry PR; any RPC failure degrades to static-only.
+async function getDbMemberMints(listId: string): Promise<string[]> {
+    try {
+        return await Effect.runPromise(assetCollectionsGetMemberMints({ slug: listId, limit: 2000 }));
+    } catch {
+        return [];
+    }
+}
+
 export async function getEffectiveCuratedAddresses(
     listId: CuratedTokenCategoryId,
 ): Promise<{ addresses: string[]; sanctumLstMints: Set<string> }> {
@@ -73,8 +84,10 @@ export async function getEffectiveCuratedAddresses(
             }
             out.push(...getStaticListAddresses(id));
         }
+        out.push(...(await getDbMemberMints('all')));
         return { addresses: uniqueStrings(out), sanctumLstMints };
     }
 
-    return { addresses: getStaticListAddresses(listId), sanctumLstMints };
+    const dbMints = await getDbMemberMints(listId);
+    return { addresses: uniqueStrings([...getStaticListAddresses(listId), ...dbMints]), sanctumLstMints };
 }
